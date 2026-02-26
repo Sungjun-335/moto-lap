@@ -1,0 +1,74 @@
+[
+  {
+    "id": 1,
+    "name": "T1",
+    "direction": "R",
+    "type": "hairpin",
+    "entry": { "lat": 37.0818941, "lon": 129.0129758, "dist": 478 },
+    "apex": { "lat": 37.0820382, "lon": 129.0123161, "dist": 546 },
+    "exit": { "lat": 37.0824485, "lon": 129.012735, "dist": 610 },
+    "radius_min": 21.4,
+    "radius_apex": 21.4,
+    "notes": ""
+  },
+  {
+    "id": 2,
+    "name": "T2",
+    "direction": "R",
+    "type": "kink",
+    "entry": { "lat": 37.0824485, "lon": 129.012735, "dist": 610 },
+    "apex": { "lat": 37.0834292, "lon": 129.0155126, "dist": 880 },
+    "exit": { "lat": 37.083458, "lon": 129.0157805, "dist": 904 },
+    "radius_min": 223.7,
+    "radius_apex": 223.7,
+    "notes": ""
+  },
+  {
+    "id": 3,
+    "name": "T3",
+    "direction": "L",
+    "type": "sweeper",
+    "entry": { "lat": 37.083458, "lon": 129.0157805, "dist": 904 },
+    "apex": { "lat": 37.0841058, "lon": 129.0178992, "dist": 1124 },
+    "exit": { "lat": 37.0845242, "lon": 129.0177973, "dist": 1172 },
+    "radius_min": 52.6,
+    "radius_apex": 52.6,
+    "notes": ""
+  },
+  {
+    "id": 4,
+    "name": "T4",
+    "direction": "R",
+    "type": "sweeper",
+    "entry": { "lat": 37.0845242, "lon": 129.0177973, "dist": 1172 },
+    "apex": { "lat": 37.084988, "lon": 129.0176777, "dist": 1226 },
+    "exit": { "lat": 37.0849228, "lon": 129.0185637, "dist": 1324 },
+    "radius_min": 29.3,
+    "radius_apex": 29.3,
+    "notes": ""
+  },
+  {
+    "id": 5,
+    "name": "T5",
+    "direction": "L",
+    "type": "kink",
+    "entry": { "lat": 37.0849228, "lon": 129.0185637, "dist": 1324 },
+    "apex": { "lat": 37.0844966, "lon": 129.0191619, "dist": 1396 },
+    "exit": { "lat": 37.0846812, "lon": 129.0202442, "dist": 1500 },
+    "radius_min": 99,
+    "radius_apex": 99,
+    "notes": ""
+  },
+  {
+    "id": 6,
+    "name": "T6",
+    "direction": "R",
+    "type": "kink",
+    "entry": { "lat": 37.0846812, "lon": 129.0202442, "dist": 1500 },
+    "apex": { "lat": 37.0845559, "lon": 129.0227394, "dist": 1772 },
+    "exit": { "lat": 37.0831805, "lon": 129.0215743, "dist": 1978 },
+    "radius_min": 83.1,
+    "radius_apex": 83.1,
+    "notes": ""
+  }
+]

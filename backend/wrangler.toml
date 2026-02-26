@@ -1,0 +1,18 @@
+name = "motolap-backend"
+main = "src/entry.py"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["python_workers"]
+account_id = "979c4739d0e0ec53a3eb20186862ec6c"
+
+[vars]
+# Lambda Function URL for /api/sessions (required)
+LAMBDA_URL = ""
+# Optional bearer token for Lambda auth
+LAMBDA_TOKEN = ""
+# Gemini API key for AI report generation (set via .dev.vars locally, secrets in prod)
+# GEMINI_API_KEY = "" — do NOT put real keys here; use `wrangler secret put GEMINI_API_KEY`
+
+[[d1_databases]]
+binding = "DB"
+database_name = "motolap-db"
+database_id = "de334793-fa9c-4537-ad91-a4a85bf854cd" # Placeholder, user needs to create DB

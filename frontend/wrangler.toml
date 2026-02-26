@@ -1,0 +1,9 @@
+name = "motolap-frontend"
+main = "src/worker.js"
+compatibility_date = "2024-09-23"
+
+# Cloudflare Workers Assets configuration
+# "binding" allows us to access the assets in the worker (env.ASSETS)
+[assets]
+directory = "./dist"
+binding = "ASSETS"

@@ -1,0 +1,23 @@
+*.pyc
+
+python_modules
+.venv
+.venv-workers
+node_modules/
+
+.wrangler
+.dev.vars
+
+# Windows reserved device name
+nul
+
+# Build output
+dist/
+
+# Screenshots & test data
+*.png
+*.csv
+
+# Tool-generated
+.playwright-mcp/
+.claude/

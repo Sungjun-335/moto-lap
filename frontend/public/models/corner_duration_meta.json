@@ -1,0 +1,18 @@
+{
+  "feature_names": [
+    "corner_index", "entry_speed", "min_speed", "exit_speed", "apex_speed",
+    "sob_offset_s", "cob_offset_s", "eob_offset_s", "total_brk_g_s", "min_accel_x_g",
+    "sol_offset_s", "col_offset_s", "eol_offset_s", "max_lean_deg", "min_vel_kph", "min_vel_offset_s",
+    "sot_offset_s", "cot_offset_s", "eot_offset_s", "total_tps_g_s", "max_accel_x_g",
+    "g_dip_value", "g_dip_ratio", "entry_mean_g_sum",
+    "cst_total_time_s", "cst_speed_loss_kph", "cst_segments",
+    "max_brake_jerk_g_per_s", "mean_brake_jerk_g_per_s",
+    "time_to_apex_s", "time_from_apex_to_exit_s",
+    "max_decel_mps2", "entry_brake_ratio", "max_lat_g", "mean_lat_g"
+  ],
+  "target": "duration_s",
+  "normalization": {},
+  "metrics": {},
+  "feature_importance": {},
+  "_note": "This is a placeholder. Replace with actual model_meta.json from ml/train.py output."
+}

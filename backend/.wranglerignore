@@ -1,0 +1,3 @@
+python_modules/scipy/**
+python_modules/scipy-*.dist-info/**
+python_modules/scipy.libs/**

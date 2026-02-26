@@ -1,0 +1,46 @@
+name: Deploy Lambda Function
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'lambda/**'
+  workflow_dispatch:
+
+jobs:
+  deploy-lambda:
+    runs-on: ubuntu-latest
+    name: Deploy Session Analysis Lambda
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        working-directory: lambda
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -t .
+
+      - name: Package Lambda
+        working-directory: lambda
+        run: |
+          zip -r ../lambda-deployment.zip . -x "*.pyc" -x "__pycache__/*"
+
+      - name: Deploy to AWS Lambda
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+      - name: Update Lambda Function
+        run: |
+          aws lambda update-function-code \
+            --function-name ${{ secrets.LAMBDA_FUNCTION_NAME }} \
+            --zip-file fileb://lambda-deployment.zip

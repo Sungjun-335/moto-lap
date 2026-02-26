@@ -1,0 +1,33 @@
+[tools]
+node = "lts"
+python = "3.12"
+uv = "latest"
+
+[tasks.sync-logic]
+description = "Syncs shared python logic from analysis/ to backend/"
+# Use rsync to mirror the directory, excluding pycache
+run = "rsync -av --delete --exclude='__pycache__' analysis/seperate_corners/corner_detection/ backend/src/logic/"
+sources = ["analysis/seperate_corners/corner_detection/**/*"]
+outputs = ["backend/src/logic/**/*"]
+
+[tasks."dev:backend"]
+description = "Run backend worker in dev mode (with auto-sync)"
+depends = ["sync-logic"]
+dir = "backend"
+run = "uv run pywrangler dev"
+
+[tasks."dev:frontend"]
+description = "Run frontend dev server"
+dir = "frontend"
+run = "npm run dev"
+
+[tasks."deploy:backend"]
+description = "Deploy backend to Cloudflare Workers"
+depends = ["sync-logic"]
+dir = "backend"
+run = "npx wrangler deploy"
+
+[tasks.dev]
+description = "Run both frontend and backend in parallel (Requires mise feature)"
+# Note: Users usually run this in split terminal, but this is a placeholder
+run = "echo 'Run \"mise run dev:backend\" and \"mise run dev:frontend\" in separate terminals.'"

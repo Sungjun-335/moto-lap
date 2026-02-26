@@ -1,0 +1,2245 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>TRP Track Corner Editor</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; display: flex; flex-direction: column; height: 100vh; }
+
+  .main { display: flex; flex: 1; min-height: 0; }
+  #map { flex: 1; }
+
+  #sidebar { width: 340px; background: #16213e; overflow-y: auto; display: flex; flex-direction: column; }
+  #sidebar h2 { padding: 12px 16px; background: #0f3460; font-size: 15px; }
+
+  .info-panel { padding: 8px 16px; border-bottom: 1px solid #1a1a3e; font-size: 13px; }
+  .info-panel label { color: #999; font-size: 11px; display: block; margin-bottom: 2px; }
+  .info-panel .val { font-size: 16px; font-weight: bold; color: #53c5ff; }
+
+  .mode-bar { padding: 8px 16px; display: flex; gap: 6px; border-bottom: 1px solid #1a1a3e; flex-wrap: wrap; }
+  .mode-btn { padding: 6px 12px; border: 1px solid #444; border-radius: 6px; background: transparent; color: #ccc; cursor: pointer; font-size: 12px; transition: all .15s; }
+  .mode-btn.active { background: #e94560; color: #fff; border-color: #e94560; }
+  .mode-btn[data-mode="entry"].active { background: #4caf50; border-color: #4caf50; }
+  .mode-btn[data-mode="apex"].active { background: #e94560; border-color: #e94560; }
+  .mode-btn[data-mode="exit"].active { background: #ff9800; border-color: #ff9800; }
+  .mode-btn[data-mode="left-boundary"].active { background: #2196F3; border-color: #2196F3; }
+  .mode-btn[data-mode="right-boundary"].active { background: #FF6D00; border-color: #FF6D00; }
+  .mode-btn[data-mode="centerline"].active { background: #AB47BC; border-color: #AB47BC; }
+
+  .boundary-panel { padding: 10px 16px; border-bottom: 1px solid #1a1a3e; }
+  .boundary-panel h3 { font-size: 13px; color: #aaa; margin-bottom: 6px; }
+  .boundary-stats { display: flex; gap: 16px; font-size: 12px; margin-bottom: 6px; }
+  .boundary-stats .left-stat { color: #2196F3; }
+  .boundary-stats .right-stat { color: #FF6D00; }
+  .boundary-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .boundary-btns button { font-size: 11px; padding: 3px 8px; border: 1px solid #444; border-radius: 4px; background: transparent; color: #ccc; cursor: pointer; }
+  .boundary-btns button:hover { background: #333; }
+  .boundary-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 6px; color: #aaa; }
+  .boundary-toggle input { accent-color: #e94560; }
+
+  #corner-list { flex: 1; overflow-y: auto; padding: 6px; }
+  .corner-item { padding: 8px 10px; margin: 3px 0; background: #1a1a3e; border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border: 2px solid transparent; transition: border-color .15s; }
+  .corner-item:hover { background: #222244; }
+  .corner-item.selected { border-color: #e94560; }
+  .corner-name { font-weight: bold; font-size: 13px; }
+  .corner-meta { font-size: 11px; color: #999; }
+  .corner-dir { font-size: 12px; padding: 2px 8px; border-radius: 4px; font-weight: bold; }
+  .corner-dir.L { background: #1e88e5; color: #fff; }
+  .corner-dir.R { background: #e94560; color: #fff; }
+
+  .btn-row { padding: 8px 16px; display: flex; gap: 8px; border-top: 1px solid #1a1a3e; }
+  .btn { padding: 8px; flex: 1; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; }
+  .btn-primary { background: #e94560; color: #fff; }
+  .btn-secondary { background: #333; color: #ccc; }
+  .btn:hover { opacity: 0.85; }
+
+  /* GPS Offset Panel */
+  .offset-panel { padding: 10px 16px; border-bottom: 1px solid #1a1a3e; }
+  .offset-panel h3 { font-size: 13px; color: #aaa; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+  .offset-panel h3 .icon { font-size: 15px; }
+  .offset-slider-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .offset-slider-row label { font-size: 11px; color: #999; min-width: 24px; }
+  .offset-slider-row input[type="range"] { flex: 1; accent-color: #4caf50; }
+  .offset-slider-row .offset-val { font-size: 12px; color: #4caf50; font-weight: bold; min-width: 55px; text-align: right; }
+  .offset-btns { display: flex; gap: 6px; margin-top: 6px; }
+  .offset-btns button { font-size: 11px; padding: 4px 10px; border: 1px solid #444; border-radius: 4px; cursor: pointer; }
+  .offset-preview-info { font-size: 11px; color: #4caf50; margin-top: 4px; }
+
+  /* Satellite Detection Panel */
+  .sat-panel { padding: 10px 16px; border-bottom: 1px solid #1a1a3e; }
+  .sat-panel h3 { font-size: 13px; color: #aaa; margin-bottom: 6px; }
+  .sat-slider-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+  .sat-slider-row label { font-size: 11px; color: #999; min-width: 60px; }
+  .sat-slider-row input[type="range"] { flex: 1; accent-color: #ff9800; }
+  .sat-slider-row .sat-val { font-size: 12px; color: #ff9800; font-weight: bold; min-width: 40px; text-align: right; }
+  .sat-btns { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+  .sat-btns button { font-size: 11px; padding: 4px 10px; border: 1px solid #444; border-radius: 4px; cursor: pointer; }
+  .sat-progress { font-size: 11px; color: #ff9800; margin-top: 4px; min-height: 16px; }
+  .sat-debug-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 6px; color: #aaa; }
+  .sat-debug-toggle input { accent-color: #ff9800; }
+
+  /* Bottom chart strip */
+  #chart-strip { height: 140px; background: #111; border-top: 2px solid #222; position: relative; flex-shrink: 0; cursor: crosshair; }
+  #chart-canvas { width: 100%; height: 100%; display: block; }
+  #chart-hover { position: absolute; top: 0; bottom: 20px; width: 1px; background: rgba(255,255,255,0.5); pointer-events: none; display: none; }
+  #chart-hover-label { position: absolute; top: 2px; background: rgba(0,0,0,0.8); color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 10px; pointer-events: none; white-space: nowrap; transform: translateX(-50%); }
+  #chart-legend { position: absolute; top: 4px; right: 8px; font-size: 10px; pointer-events: none; }
+</style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+</head>
+<body>
+
+<div class="main">
+  <div id="map"></div>
+  <div id="sidebar">
+    <h2>TRP Track Corner Editor</h2>
+
+    <div class="info-panel">
+      <label>커서 위치</label>
+      <div id="cursor-info" style="font-size: 13px; color: #aaa;">맵 또는 그래프 위에서 포인트 선택</div>
+    </div>
+
+    <div class="info-panel" style="display:flex;gap:16px;">
+      <div><label>트랙 길이</label><div class="val" id="track-length">-</div></div>
+      <div><label>모드</label><div class="val" id="mode-label" style="font-size:13px;">보기</div></div>
+    </div>
+
+    <div class="mode-bar">
+      <button class="mode-btn active" data-mode="view" onclick="setMode('view')">보기</button>
+      <button class="mode-btn" data-mode="entry" onclick="setMode('entry')">진입점</button>
+      <button class="mode-btn" data-mode="apex" onclick="setMode('apex')">에이펙스</button>
+      <button class="mode-btn" data-mode="exit" onclick="setMode('exit')">탈출점</button>
+      <button class="mode-btn" data-mode="left-boundary" onclick="setMode('left-boundary')">좌경계</button>
+      <button class="mode-btn" data-mode="right-boundary" onclick="setMode('right-boundary')">우경계</button>
+      <button class="mode-btn" data-mode="centerline" onclick="setMode('centerline')">중심선</button>
+    </div>
+
+    <div class="info-panel" style="padding:10px 16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <label style="margin:0">R 임계값 (반경 ≤ 이 값 → 코너)</label>
+        <span id="threshold-val" style="color:#e94560;font-weight:bold;font-size:14px;">150m</span>
+      </div>
+      <input type="range" id="threshold-slider" min="30" max="400" value="150" step="10"
+             style="width:100%;accent-color:#e94560;"
+             oninput="onThresholdChange(this.value)">
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:#555;margin-top:2px;">
+        <span>30m (타이트만)</span><span>400m (전부)</span>
+      </div>
+      <div style="margin-top:6px;display:flex;gap:6px;">
+        <span id="corner-count" style="font-size:12px;color:#53c5ff;">코너: -개</span>
+        <button onclick="detectCornersFromThreshold()" style="font-size:10px;padding:2px 8px;background:#e94560;color:#fff;border:none;border-radius:4px;cursor:pointer;">재감지</button>
+      </div>
+    </div>
+
+    <div class="boundary-panel" id="boundary-panel">
+      <h3>트랙 경계</h3>
+      <div class="boundary-stats">
+        <span class="left-stat">왼쪽: <b id="left-count">0</b>개</span>
+        <span class="right-stat">오른쪽: <b id="right-count">0</b>개</span>
+      </div>
+
+      <div style="margin:6px 0 4px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+          <span style="font-size:11px;color:#999;">트랙 폭 (좌/우)</span>
+          <span id="width-val" style="color:#53c5ff;font-weight:bold;font-size:12px;">4.0m</span>
+        </div>
+        <input type="range" id="width-slider" min="1" max="12" value="4" step="0.5"
+               style="width:100%;accent-color:#53c5ff;"
+               oninput="document.getElementById('width-val').textContent=this.value+'m'">
+        <div style="display:flex;justify-content:space-between;font-size:9px;color:#555;margin-top:1px;">
+          <span>1m</span><span>12m</span>
+        </div>
+      </div>
+      <div style="margin:4px 0 2px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+          <span style="font-size:11px;color:#999;">포인트 간격</span>
+          <span id="interval-val" style="color:#53c5ff;font-weight:bold;font-size:12px;">5m</span>
+        </div>
+        <input type="range" id="interval-slider" min="2" max="20" value="5" step="1"
+               style="width:100%;accent-color:#53c5ff;"
+               oninput="document.getElementById('interval-val').textContent=this.value+'m'">
+      </div>
+      <div class="boundary-btns" style="margin-top:4px;">
+        <button onclick="autoGenerateBoundaries()" style="background:#0f3460;color:#53c5ff;border-color:#53c5ff;font-weight:bold;">자동 생성</button>
+        <button onclick="resetBoundary('left')">좌 초기화</button>
+        <button onclick="resetBoundary('right')">우 초기화</button>
+        <button onclick="undoBoundary()">Ctrl+Z</button>
+      </div>
+      <div class="boundary-toggle">
+        <label><input type="checkbox" id="chk-polygon" checked onchange="drawBoundaries()"> 폴리곤</label>
+        <label><input type="checkbox" id="chk-auto-advance" checked> 자동 전진</label>
+        <label><input type="checkbox" id="chk-direction-arrows" checked onchange="drawDirectionArrows()"> 화살표</label>
+      </div>
+    </div>
+
+    <!-- GPS Offset Panel -->
+    <div class="offset-panel" id="offset-panel">
+      <h3><span class="icon">&#127759;</span> GPS 오프셋 보정</h3>
+      <div class="offset-slider-row">
+        <label>위도</label>
+        <button onclick="stepOffset('lat',-1)" style="width:22px;height:22px;border:1px solid #555;border-radius:4px;background:#1a1a3e;color:#ccc;cursor:pointer;font-size:13px;line-height:1;">-</button>
+        <input type="range" id="offset-lat-slider" min="-100" max="100" value="0" step="1"
+               oninput="onOffsetChange()">
+        <button onclick="stepOffset('lat',1)" style="width:22px;height:22px;border:1px solid #555;border-radius:4px;background:#1a1a3e;color:#ccc;cursor:pointer;font-size:13px;line-height:1;">+</button>
+        <span class="offset-val" id="offset-lat-val">0.0m</span>
+      </div>
+      <div class="offset-slider-row">
+        <label>경도</label>
+        <button onclick="stepOffset('lon',-1)" style="width:22px;height:22px;border:1px solid #555;border-radius:4px;background:#1a1a3e;color:#ccc;cursor:pointer;font-size:13px;line-height:1;">-</button>
+        <input type="range" id="offset-lon-slider" min="-100" max="100" value="0" step="1"
+               oninput="onOffsetChange()">
+        <button onclick="stepOffset('lon',1)" style="width:22px;height:22px;border:1px solid #555;border-radius:4px;background:#1a1a3e;color:#ccc;cursor:pointer;font-size:13px;line-height:1;">+</button>
+        <span class="offset-val" id="offset-lon-val">0.0m</span>
+      </div>
+      <div class="offset-btns">
+        <button onclick="applyGpsOffset()" style="background:#1b5e20;color:#4caf50;border-color:#4caf50;font-weight:bold;">적용</button>
+        <button onclick="resetGpsOffset()" style="color:#f88;">초기화</button>
+        <button onclick="document.getElementById('offset-lat-slider').value=0;document.getElementById('offset-lon-slider').value=0;onOffsetChange();" style="color:#aaa;">슬라이더 0</button>
+      </div>
+      <div class="offset-preview-info" id="offset-preview-info"></div>
+    </div>
+
+    <!-- Satellite Boundary Detection Panel -->
+    <div class="sat-panel" id="sat-panel">
+      <h3>&#128752; 위성사진 경계 자동 인식</h3>
+      <div class="sat-slider-row">
+        <label>감지 임계값</label>
+        <input type="range" id="sat-threshold-slider" min="80" max="200" value="128" step="1"
+               oninput="document.getElementById('sat-threshold-val').textContent=this.value">
+        <span class="sat-val" id="sat-threshold-val">128</span>
+      </div>
+      <div class="sat-slider-row">
+        <label>스무딩</label>
+        <input type="range" id="sat-smoothing-slider" min="0" max="5" value="2" step="1"
+               oninput="document.getElementById('sat-smoothing-val').textContent=this.value+'회'">
+        <span class="sat-val" id="sat-smoothing-val">2회</span>
+      </div>
+      <div class="sat-slider-row">
+        <label>단순화</label>
+        <input type="range" id="sat-simplify-slider" min="0.5" max="5" value="1.0" step="0.5"
+               oninput="document.getElementById('sat-simplify-val').textContent=this.value+'m'">
+        <span class="sat-val" id="sat-simplify-val">1.0m</span>
+      </div>
+      <div class="sat-btns">
+        <button onclick="startSatelliteDetection()" id="sat-detect-btn" style="background:#4a2800;color:#ff9800;border-color:#ff9800;font-weight:bold;">자동 감지 시작</button>
+        <button onclick="cancelSatelliteDetection()" id="sat-cancel-btn" style="color:#f88;display:none;">취소</button>
+        <button onclick="applySatelliteBoundaries()" id="sat-apply-btn" style="color:#4caf50;display:none;">경계 적용</button>
+      </div>
+      <div class="sat-debug-toggle">
+        <label><input type="checkbox" id="chk-sat-debug" onchange="toggleSatDebug()"> 처리 결과 보기</label>
+      </div>
+      <div class="sat-progress" id="sat-progress"></div>
+    </div>
+
+    <div class="boundary-panel" id="centerline-panel">
+      <h3>중심선 편집</h3>
+      <div style="font-size:11px;color:#888;margin-bottom:4px;">
+        [중심선] 모드에서 보라색 포인트를 드래그하여 위치 조정.<br>
+        주변 포인트도 함께 스무딩됩니다.
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+        <span style="font-size:11px;color:#999;">스무딩 반경</span>
+        <span id="smooth-val" style="color:#AB47BC;font-weight:bold;font-size:12px;">5개</span>
+      </div>
+      <input type="range" id="smooth-slider" min="0" max="15" value="5" step="1"
+             style="width:100%;accent-color:#AB47BC;"
+             oninput="document.getElementById('smooth-val').textContent=this.value+'개'">
+      <div class="boundary-btns" style="margin-top:4px;">
+        <button onclick="resetCenterline()" style="color:#f88;">중심선 초기화</button>
+        <button onclick="exportCenterline()" style="color:#53c5ff;">중심선 내보내기</button>
+      </div>
+      <div id="centerline-edit-info" style="font-size:11px;color:#AB47BC;margin-top:4px;"></div>
+    </div>
+
+    <div id="corner-list"></div>
+
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="addCorner()">+ 코너 추가</button>
+      <button class="btn btn-primary" onclick="exportCorners()">JSON 내보내기</button>
+    </div>
+  </div>
+</div>
+
+<div id="chart-strip">
+  <canvas id="chart-canvas"></canvas>
+  <div id="chart-hover"><div id="chart-hover-label"></div></div>
+  <div id="chart-legend">
+    <span style="color:#53c5ff">── 속도(km/h)</span> &nbsp;
+    <span style="color:rgba(233,69,96,0.6)">── 곡률반경</span>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ===== STATE =====
+let centerline = [];
+let curvatureData = [];
+let corners = [];
+let currentMode = 'view';
+let selectedCornerIdx = -1;
+
+// Layers
+let trackPolylines = [];
+let distanceMarkers = [];
+let entryExitMarkers = [];
+let hoverMarker = null;
+let syncMarker = null; // chart→map sync marker
+
+// Chart layout (computed in drawChart)
+let chartLayout = { padL: 50, padR: 10, padT: 8, padB: 22, cw: 0, ch: 0, maxDist: 0 };
+
+let map;
+
+// ===== BOUNDARY STATE =====
+let boundaries = { left: [], right: [] }; // [{lat, lon, dist}]
+let boundaryLayers = { leftLine: null, rightLine: null, leftMarkers: [], rightMarkers: [], polygon: null, arrowMarkers: [] };
+let boundaryUndoStack = []; // [{side, action, point, index}]
+let boundaryDragState = null; // {side, index, marker}
+
+// ===== GPS OFFSET STATE =====
+let gpsOffset = { lat: 0, lon: 0 }; // applied offset in degrees
+let offsetPreviewLayer = null; // polyline for preview
+let appliedOffsetTotal = { lat: 0, lon: 0 }; // cumulative applied offset
+
+// ===== SATELLITE DETECTION STATE =====
+let satDetectionCancelled = false;
+let satPreviewBoundaries = null; // { left: [], right: [] } detected boundaries before apply
+let satPreviewLayers = []; // map layers for preview
+let satDebugCanvas = null; // offscreen debug canvas element
+
+// ===== CENTERLINE EDIT STATE =====
+let originalCenterline = null; // backup for reset
+let clEditMarkers = []; // visible edit markers
+let clEditStep = 10; // show every Nth point
+let clDragState = null; // {idx, marker}
+
+// ===== DATA LOADING =====
+async function loadData() {
+  const resp = await fetch('./trp_compact.json');
+  const raw = await resp.json();
+  centerline = raw.map(p => ({ lat: p[0], lon: p[1], dist: p[2], speed: p[3] }));
+  document.getElementById('track-length').textContent = Math.round(centerline[centerline.length-1].dist) + 'm';
+}
+
+async function loadCorners() {
+  try {
+    const resp = await fetch('./trp_corners_with_radius.json');
+    const data = await resp.json();
+    corners = data.corners.map(c => ({ ...c, notes: c.notes || '' }));
+    curvatureData = data.curvature || [];
+    selectedCornerIdx = 0;
+  } catch (e) {
+    try {
+      const resp2 = await fetch('./trp_auto_corners.json');
+      corners = (await resp2.json()).map(c => ({ ...c, notes: c.notes || '' }));
+      selectedCornerIdx = 0;
+    } catch (e2) { /* empty */ }
+  }
+}
+
+// ===== MAP =====
+function initMap() {
+  const center = centerline[Math.floor(centerline.length / 2)];
+  map = L.map('map', { zoomControl: true }).setView([center.lat, center.lon], 17);
+
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri', maxZoom: 19
+  }).addTo(map);
+
+  drawTrack();
+  drawDistanceMarkers();
+
+  map.on('mousemove', onMapHover);
+  map.on('click', onMapClick);
+}
+
+function speedToColor(speed) {
+  const t = Math.max(0, Math.min(1, (speed - 40) / 140));
+  if (t < 0.33) { const s = t/0.33; return `rgb(0,${Math.round(100+s*155)},${Math.round(255-s*55)})`; }
+  if (t < 0.66) { const s = (t-0.33)/0.33; return `rgb(${Math.round(s*255)},255,${Math.round(200-s*200)})`; }
+  const s = (t-0.66)/0.34; return `rgb(255,${Math.round(255-s*200)},0)`;
+}
+
+function drawTrack() {
+  trackPolylines.forEach(p => map.removeLayer(p)); trackPolylines = [];
+  for (let i = 0; i < centerline.length - 3; i += 3) {
+    const seg = [];
+    for (let j = i; j <= Math.min(i+3, centerline.length-1); j++) seg.push([centerline[j].lat, centerline[j].lon]);
+    const avg = centerline.slice(i, i+3).reduce((s,p) => s+p.speed, 0) / 3;
+    trackPolylines.push(L.polyline(seg, { color: speedToColor(avg), weight: 5, opacity: 0.9 }).addTo(map));
+  }
+}
+
+function drawDistanceMarkers() {
+  distanceMarkers.forEach(m => map.removeLayer(m)); distanceMarkers = [];
+  for (let d = 0; d <= centerline[centerline.length-1].dist; d += 100) {
+    const pt = getPointAtDist(d);
+    if (pt) {
+      const m = L.circleMarker([pt.lat, pt.lon], { radius: 3, color: '#fff', fillColor: '#fff', fillOpacity: 0.8, weight: 1 }).addTo(map);
+      m.bindTooltip(`${d}m`, { permanent: false, direction: 'top' });
+      distanceMarkers.push(m);
+    }
+  }
+  const sf = centerline[0];
+  distanceMarkers.push(L.marker([sf.lat, sf.lon], {
+    icon: L.divIcon({ className: '', html: '<div style="background:#fff;color:#000;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:bold;">S/F</div>', iconSize:[30,20], iconAnchor:[15,10] })
+  }).addTo(map));
+}
+
+function getPointAtDist(targetDist) {
+  for (let i = 0; i < centerline.length-1; i++) {
+    if (centerline[i].dist <= targetDist && centerline[i+1].dist >= targetDist) {
+      const t = (targetDist - centerline[i].dist) / (centerline[i+1].dist - centerline[i].dist || 1);
+      return {
+        lat: centerline[i].lat + t*(centerline[i+1].lat - centerline[i].lat),
+        lon: centerline[i].lon + t*(centerline[i+1].lon - centerline[i].lon),
+        speed: centerline[i].speed + t*(centerline[i+1].speed - centerline[i].speed),
+        dist: targetDist
+      };
+    }
+  }
+  return null;
+}
+
+function findNearestIdx(latlng) {
+  let minD = Infinity, best = 0;
+  for (let i = 0; i < centerline.length; i++) {
+    const d = (centerline[i].lat - latlng.lat)**2 + (centerline[i].lon - latlng.lng)**2;
+    if (d < minD) { minD = d; best = i; }
+  }
+  return { idx: best, distFromTrack: Math.sqrt(minD)*111000 };
+}
+
+// ===== SHARED: highlight a point on both map & chart =====
+function highlightPoint(dist, source) {
+  const pt = getPointAtDist(dist);
+  if (!pt) return;
+
+  // Update info
+  document.getElementById('cursor-info').innerHTML =
+    `<b>${Math.round(dist)}m</b> | 속도: ${Math.round(pt.speed)} km/h`;
+
+  // Map marker
+  if (source !== 'map') {
+    if (!syncMarker) {
+      syncMarker = L.circleMarker([pt.lat, pt.lon], {
+        radius: 7, color: '#fff', fillColor: '#ffeb3b', fillOpacity: 1, weight: 2, zIndexOffset: 9999
+      }).addTo(map);
+    } else {
+      syncMarker.setLatLng([pt.lat, pt.lon]);
+    }
+  }
+
+  // Chart cursor line
+  if (source !== 'chart') {
+    const { padL, cw, maxDist } = chartLayout;
+    if (maxDist > 0) {
+      const hoverEl = document.getElementById('chart-hover');
+      const labelEl = document.getElementById('chart-hover-label');
+      const x = padL + (dist / maxDist) * cw;
+      hoverEl.style.display = 'block';
+      hoverEl.style.left = x + 'px';
+      labelEl.textContent = `${Math.round(dist)}m · ${Math.round(pt.speed)}km/h`;
+    }
+  }
+}
+
+function clearHighlight() {
+  if (syncMarker) { map.removeLayer(syncMarker); syncMarker = null; }
+  document.getElementById('chart-hover').style.display = 'none';
+  document.getElementById('cursor-info').innerHTML = '맵 또는 그래프 위에서 포인트 선택';
+}
+
+// ===== SHARED: assign point to corner =====
+function assignPoint(dist) {
+  if (currentMode === 'view') return;
+  if (selectedCornerIdx < 0 || selectedCornerIdx >= corners.length) return;
+
+  const pt = getPointAtDist(dist);
+  if (!pt) return;
+
+  const corner = corners[selectedCornerIdx];
+  const loc = { lat: pt.lat, lon: pt.lon, dist: pt.dist };
+
+  if (currentMode === 'entry') corner.entry = loc;
+  else if (currentMode === 'apex') corner.apex = loc;
+  else if (currentMode === 'exit') corner.exit = loc;
+
+  if (corner.entry && corner.apex && corner.exit) {
+    corner.direction = detectDirection(corner.entry, corner.apex, corner.exit);
+  }
+
+  // Auto-advance mode: entry→apex→exit→view
+  if (currentMode === 'entry') setMode('apex');
+  else if (currentMode === 'apex') setMode('exit');
+  else if (currentMode === 'exit') setMode('view');
+
+  renderCornerList();
+  drawCornerMarkers();
+  drawChart();
+}
+
+function detectDirection(entry, apex, exit) {
+  const v1x = apex.lon - entry.lon, v1y = apex.lat - entry.lat;
+  const v2x = exit.lon - apex.lon, v2y = exit.lat - apex.lat;
+  return (v1x*v2y - v1y*v2x) > 0 ? 'L' : 'R';
+}
+
+// ===== MAP EVENTS =====
+function onMapHover(e) {
+  const { idx, distFromTrack } = findNearestIdx(e.latlng);
+  const isBoundary = currentMode === 'left-boundary' || currentMode === 'right-boundary';
+  if (distFromTrack > (isBoundary ? 200 : 80)) { clearHighlight(); return; }
+
+  const p = centerline[idx];
+
+  // Map hover marker (separate from sync)
+  if (!hoverMarker) {
+    hoverMarker = L.circleMarker([p.lat, p.lon], {
+      radius: 6, color: '#fff', fillColor: '#e94560', fillOpacity: 1, weight: 2
+    }).addTo(map);
+  } else {
+    hoverMarker.setLatLng([p.lat, p.lon]);
+  }
+
+  highlightPoint(p.dist, 'map');
+}
+
+function onMapClick(e) {
+  if (currentMode === 'left-boundary' || currentMode === 'right-boundary') {
+    addBoundaryPoint(currentMode === 'left-boundary' ? 'left' : 'right', e.latlng);
+    return;
+  }
+  if (currentMode === 'centerline') return; // centerline editing uses drag, not click
+  const { idx, distFromTrack } = findNearestIdx(e.latlng);
+  if (distFromTrack > 50) return;
+  assignPoint(centerline[idx].dist);
+}
+
+// ===== CHART =====
+function drawChart() {
+  const canvas = document.getElementById('chart-canvas');
+  if (!canvas || !centerline.length) return;
+
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const w = rect.width, h = rect.height;
+
+  const padL = 50, padR = 10, padT = 8, padB = 22;
+  const cw = w - padL - padR;
+  const ch = h - padT - padB;
+  const maxDist = centerline[centerline.length-1].dist;
+  const maxSpd = 200;
+  chartLayout = { padL, padR, padT, padB, cw, ch, maxDist };
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Background
+  ctx.fillStyle = '#0d0d1a';
+  ctx.fillRect(0, 0, w, h);
+
+  // Grid
+  ctx.strokeStyle = '#1a1a2e';
+  ctx.lineWidth = 0.5;
+  for (let s = 0; s <= maxSpd; s += 50) {
+    const y = padT + ch - (s/maxSpd)*ch;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL+cw, y); ctx.stroke();
+  }
+
+  // Corner shading
+  corners.forEach((c, i) => {
+    if (!c.entry || !c.exit) return;
+    const x1 = padL + (c.entry.dist/maxDist)*cw;
+    const x2 = padL + (c.exit.dist/maxDist)*cw;
+    ctx.fillStyle = i === selectedCornerIdx ? 'rgba(233,69,96,0.2)' : 'rgba(100,100,100,0.1)';
+    ctx.fillRect(x1, padT, x2-x1, ch);
+
+    // Corner label
+    ctx.fillStyle = i === selectedCornerIdx ? '#e94560' : '#555';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(c.name, (x1+x2)/2, padT + 12);
+
+    // Entry/Apex/Exit vertical lines
+    if (c.entry) {
+      ctx.strokeStyle = '#4caf50'; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(x1, padT); ctx.lineTo(x1, padT+ch); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    if (c.apex) {
+      const xa = padL + (c.apex.dist/maxDist)*cw;
+      ctx.strokeStyle = '#e94560'; ctx.lineWidth = 1.5; ctx.setLineDash([2,2]);
+      ctx.beginPath(); ctx.moveTo(xa, padT); ctx.lineTo(xa, padT+ch); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    if (c.exit) {
+      ctx.strokeStyle = '#ff9800'; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(x2, padT); ctx.lineTo(x2, padT+ch); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  });
+
+  // Curvature (deg/m) - higher = tighter corner
+  const maxCurv = 3; // 3 deg/m 이상은 클램프
+  if (curvatureData.length > 0) {
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(233,69,96,0.5)';
+    ctx.lineWidth = 1;
+    let first = true;
+    for (const item of curvatureData) {
+      const dist = item[0], curv = item[1]; // [dist, curvature_deg_m, radius_m]
+      const x = padL + (dist/maxDist)*cw;
+      const y = padT + ch - (Math.min(curv, maxCurv)/maxCurv)*ch; // 높을수록 위
+      if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  // Threshold line (convert R threshold to curvature: curv = 1/R * (180/pi) ≈ 57.3/R deg/m)
+  const thresholdR = parseInt(document.getElementById('threshold-slider').value);
+  const thresholdCurv = 57.2958 / thresholdR;
+  if (thresholdCurv <= maxCurv) {
+    const threshY = padT + ch - (thresholdCurv / maxCurv) * ch;
+    ctx.strokeStyle = 'rgba(233,69,96,0.8)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath(); ctx.moveTo(padL, threshY); ctx.lineTo(padL + cw, threshY); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(233,69,96,0.8)';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`R≤${thresholdR}m`, padL + 3, threshY - 3);
+  }
+
+  // Speed line
+  ctx.beginPath();
+  ctx.strokeStyle = '#53c5ff';
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < centerline.length; i += 2) {
+    const x = padL + (centerline[i].dist/maxDist)*cw;
+    const y = padT + ch - (centerline[i].speed/maxSpd)*ch;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Y axis
+  ctx.fillStyle = '#555';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'right';
+  for (let s = 0; s <= maxSpd; s += 50) {
+    const y = padT + ch - (s/maxSpd)*ch;
+    ctx.fillText(s+'', padL-6, y+3);
+  }
+
+  // X axis
+  ctx.textAlign = 'center';
+  for (let d = 0; d <= maxDist; d += 200) {
+    const x = padL + (d/maxDist)*cw;
+    ctx.fillText(d+'m', x, h-5);
+  }
+}
+
+function chartDistFromX(clientX) {
+  const canvas = document.getElementById('chart-canvas');
+  const rect = canvas.getBoundingClientRect();
+  const x = clientX - rect.left;
+  const { padL, cw, maxDist } = chartLayout;
+  const dist = ((x - padL) / cw) * maxDist;
+  return Math.max(0, Math.min(maxDist, dist));
+}
+
+// Chart events
+function initChartEvents() {
+  const strip = document.getElementById('chart-strip');
+
+  strip.addEventListener('mousemove', (e) => {
+    const dist = chartDistFromX(e.clientX);
+    highlightPoint(dist, 'chart');
+
+    // Draw own hover line
+    const { padL, cw, maxDist } = chartLayout;
+    const hoverEl = document.getElementById('chart-hover');
+    const labelEl = document.getElementById('chart-hover-label');
+    const x = padL + (dist/maxDist)*cw;
+    hoverEl.style.display = 'block';
+    hoverEl.style.left = x + 'px';
+    const pt = getPointAtDist(dist);
+    if (pt) labelEl.textContent = `${Math.round(dist)}m · ${Math.round(pt.speed)}km/h`;
+  });
+
+  strip.addEventListener('mouseleave', () => {
+    clearHighlight();
+  });
+
+  strip.addEventListener('click', (e) => {
+    const dist = chartDistFromX(e.clientX);
+    assignPoint(dist);
+  });
+}
+
+// ===== CORNERS =====
+function addCorner() {
+  corners.push({
+    id: corners.length + 1,
+    name: `T${corners.length + 1}`,
+    direction: '', type: 'sweeper',
+    entry: null, apex: null, exit: null, notes: ''
+  });
+  selectedCornerIdx = corners.length - 1;
+  renderCornerList();
+  drawCornerMarkers();
+  drawChart();
+  setMode('entry');
+}
+
+function selectCorner(idx) {
+  selectedCornerIdx = idx;
+  renderCornerList();
+  drawCornerMarkers();
+  drawChart();
+  const c = corners[idx];
+  if (c.apex) map.setView([c.apex.lat, c.apex.lon], 18);
+}
+
+function deleteCorner(idx) {
+  if (!confirm(`"${corners[idx].name}" 삭제?`)) return;
+  corners.splice(idx, 1);
+  corners.forEach((c,i) => { c.id = i+1; if (/^T\d+$/.test(c.name)) c.name = `T${i+1}`; });
+  selectedCornerIdx = Math.min(selectedCornerIdx, corners.length-1);
+  renderCornerList(); drawCornerMarkers(); drawChart();
+}
+
+function editCornerName(idx) {
+  const name = prompt('코너 이름:', corners[idx].name);
+  if (name !== null) { corners[idx].name = name; renderCornerList(); drawChart(); }
+}
+
+function setCornerType(idx, type) {
+  corners[idx].type = type; renderCornerList();
+}
+
+function renderCornerList() {
+  const list = document.getElementById('corner-list');
+  if (!corners.length) {
+    list.innerHTML = '<div style="padding:16px;text-align:center;color:#666;">코너 없음. "+ 코너 추가" 클릭</div>';
+    return;
+  }
+  list.innerHTML = corners.map((c, i) => {
+    const sel = i === selectedCornerIdx ? 'selected' : '';
+    const ed = c.entry ? Math.round(c.entry.dist)+'m' : '?';
+    const ad = c.apex ? Math.round(c.apex.dist)+'m' : '?';
+    const xd = c.exit ? Math.round(c.exit.dist)+'m' : '?';
+    const dir = c.direction || '';
+    const tl = {hairpin:'헤어핀',sweeper:'스위퍼',chicane:'시케인',kink:'킹크'}[c.type]||c.type;
+    const rInfo = c.radius_min ? `R${Math.round(c.radius_min)}m` : '';
+    return `
+      <div class="corner-item ${sel}" onclick="selectCorner(${i})">
+        <div style="flex:1;min-width:0">
+          <div class="corner-name" ondblclick="event.stopPropagation();editCornerName(${i})">
+            ${c.name} ${rInfo?`<span style="font-size:11px;color:#53c5ff;font-weight:normal">${rInfo}</span>`:''}
+          </div>
+          <div class="corner-meta">
+            <span style="color:#4caf50">${ed}</span> → <span style="color:#e94560">${ad}</span> → <span style="color:#ff9800">${xd}</span> | ${tl}
+          </div>
+          <div style="margin-top:3px">
+            <select style="font-size:10px;padding:1px;background:#1a1a3e;color:#ccc;border:1px solid #333;border-radius:4px"
+                    onchange="setCornerType(${i},this.value)" onclick="event.stopPropagation()">
+              ${['sweeper','hairpin','chicane','kink'].map(v => `<option value="${v}" ${c.type===v?'selected':''}>${{sweeper:'스위퍼',hairpin:'헤어핀',chicane:'시케인',kink:'킹크'}[v]}</option>`).join('')}
+            </select>
+            <button style="font-size:10px;padding:1px 5px;background:#600;color:#faa;border:1px solid #800;border-radius:4px;cursor:pointer;margin-left:3px"
+                    onclick="event.stopPropagation();deleteCorner(${i})">삭제</button>
+          </div>
+        </div>
+        ${dir ? `<span class="corner-dir ${dir}">${dir}</span>` : '<span style="color:#555">?</span>'}
+      </div>`;
+  }).join('');
+}
+
+function drawCornerMarkers() {
+  entryExitMarkers.forEach(m => map.removeLayer(m)); entryExitMarkers = [];
+
+  corners.forEach((c, i) => {
+    const isSel = i === selectedCornerIdx;
+    const op = isSel ? 1 : 0.5;
+
+    if (c.entry) {
+      entryExitMarkers.push(L.circleMarker([c.entry.lat, c.entry.lon], {
+        radius: isSel?8:5, color:'#4caf50', fillColor:'#4caf50', fillOpacity:op, weight:2
+      }).addTo(map).bindTooltip(`${c.name} 진입 ${Math.round(c.entry.dist)}m`, {direction:'top'}));
+    }
+    if (c.apex) {
+      entryExitMarkers.push(L.circleMarker([c.apex.lat, c.apex.lon], {
+        radius: isSel?10:7, color:'#e94560', fillColor:'#e94560', fillOpacity:op, weight:2
+      }).addTo(map).bindTooltip(`${c.name} 에이펙스 ${Math.round(c.apex.dist)}m`, {direction:'top'}));
+
+      const rL = c.radius_min ? ` R${Math.round(c.radius_min)}m` : '';
+      entryExitMarkers.push(L.marker([c.apex.lat, c.apex.lon], {
+        icon: L.divIcon({ className:'',
+          html:`<div style="background:rgba(233,69,96,0.85);color:#fff;padding:1px 5px;border-radius:4px;font-size:10px;font-weight:bold;white-space:nowrap;transform:translate(-50%,-140%)">${c.name}${rL}</div>`,
+          iconSize:[0,0] })
+      }).addTo(map));
+
+      if (isSel && c.radius_apex && c.radius_apex < 500) {
+        entryExitMarkers.push(L.circle([c.apex.lat, c.apex.lon], {
+          radius:c.radius_apex, color:'#e94560', fillColor:'#e94560', fillOpacity:0.04, weight:1, dashArray:'6,4'
+        }).addTo(map));
+      }
+    }
+    if (c.exit) {
+      entryExitMarkers.push(L.circleMarker([c.exit.lat, c.exit.lon], {
+        radius: isSel?8:5, color:'#ff9800', fillColor:'#ff9800', fillOpacity:op, weight:2
+      }).addTo(map).bindTooltip(`${c.name} 탈출 ${Math.round(c.exit.dist)}m`, {direction:'top'}));
+    }
+    if (c.entry && c.apex && c.exit) {
+      entryExitMarkers.push(L.polyline([
+        [c.entry.lat,c.entry.lon],[c.apex.lat,c.apex.lon],[c.exit.lat,c.exit.lon]
+      ], { color:isSel?'#fff':'#555', weight:1, dashArray:'4,4', opacity:op }).addTo(map));
+    }
+  });
+}
+
+// ===== MODE =====
+function setMode(mode) {
+  const prevMode = currentMode;
+  currentMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  const modeLabels = { view:'보기', entry:'진입점 지정', apex:'에이펙스 지정', exit:'탈출점 지정', 'left-boundary':'좌측 경계 그리기', 'right-boundary':'우측 경계 그리기', centerline:'중심선 편집' };
+  const modeColors = { view:'#53c5ff', entry:'#4caf50', apex:'#e94560', exit:'#ff9800', 'left-boundary':'#2196F3', 'right-boundary':'#FF6D00', centerline:'#AB47BC' };
+  document.getElementById('mode-label').textContent = modeLabels[mode];
+  document.getElementById('mode-label').style.color = modeColors[mode];
+  document.getElementById('map').style.cursor = (mode === 'view') ? '' : 'crosshair';
+  document.getElementById('chart-strip').style.cursor = mode === 'view' ? 'crosshair' : 'pointer';
+
+  // Centerline edit markers: show/hide
+  if (mode === 'centerline' && prevMode !== 'centerline') {
+    showCenterlineEditMarkers();
+  } else if (mode !== 'centerline' && prevMode === 'centerline') {
+    hideCenterlineEditMarkers();
+  }
+}
+
+// ===== BOUNDARY FUNCTIONS =====
+
+function findNearestDist(latlng) {
+  // Find the closest centerline dist for a given lat/lon (for sorting boundary points)
+  let minD = Infinity, bestDist = 0;
+  for (let i = 0; i < centerline.length; i++) {
+    const d = (centerline[i].lat - latlng.lat)**2 + (centerline[i].lon - latlng.lng)**2;
+    if (d < minD) { minD = d; bestDist = centerline[i].dist; }
+  }
+  return bestDist;
+}
+
+function addBoundaryPoint(side, latlng) {
+  const dist = findNearestDist(latlng);
+  const point = { lat: latlng.lat, lon: latlng.lng, dist: dist };
+  const arr = boundaries[side];
+
+  // Insert sorted by dist
+  let insertIdx = arr.length;
+  for (let i = 0; i < arr.length; i++) {
+    if (arr[i].dist > dist) { insertIdx = i; break; }
+  }
+  arr.splice(insertIdx, 0, point);
+
+  // Push undo
+  boundaryUndoStack.push({ side, action: 'add', point: { ...point }, index: insertIdx });
+
+  updateBoundaryUI();
+  drawBoundaries();
+  saveBoundariesToStorage();
+
+  // Auto-advance map
+  if (document.getElementById('chk-auto-advance').checked) {
+    const advanceDist = dist + 30;
+    const pt = getPointAtDist(Math.min(advanceDist, centerline[centerline.length-1].dist));
+    if (pt) map.panTo([pt.lat, pt.lon], { animate: true, duration: 0.3 });
+  }
+}
+
+function removeBoundaryPoint(side, index) {
+  const removed = boundaries[side].splice(index, 1)[0];
+  boundaryUndoStack.push({ side, action: 'remove', point: removed, index });
+  updateBoundaryUI();
+  drawBoundaries();
+  saveBoundariesToStorage();
+}
+
+function moveBoundaryPoint(side, index, newLatLng) {
+  const old = { ...boundaries[side][index] };
+  boundaries[side][index].lat = newLatLng.lat;
+  boundaries[side][index].lon = newLatLng.lng;
+  boundaries[side][index].dist = findNearestDist(newLatLng);
+  // Re-sort after move
+  boundaries[side].sort((a, b) => a.dist - b.dist);
+  updateBoundaryUI();
+  drawBoundaries();
+  saveBoundariesToStorage();
+}
+
+function resetBoundary(side) {
+  if (boundaries[side].length === 0) return;
+  if (!confirm(`${side === 'left' ? '왼쪽' : '오른쪽'} 경계 ${boundaries[side].length}개 포인트를 모두 삭제하시겠습니까?`)) return;
+  const oldPoints = [...boundaries[side]];
+  boundaryUndoStack.push({ side, action: 'reset', points: oldPoints });
+  boundaries[side] = [];
+  updateBoundaryUI();
+  drawBoundaries();
+  saveBoundariesToStorage();
+}
+
+function undoBoundary() {
+  if (boundaryUndoStack.length === 0) return;
+  const last = boundaryUndoStack.pop();
+
+  if (last.action === 'add') {
+    boundaries[last.side].splice(last.index, 1);
+  } else if (last.action === 'remove') {
+    boundaries[last.side].splice(last.index, 0, last.point);
+  } else if (last.action === 'reset') {
+    boundaries[last.side] = last.points;
+  }
+
+  updateBoundaryUI();
+  drawBoundaries();
+  saveBoundariesToStorage();
+}
+
+function updateBoundaryUI() {
+  document.getElementById('left-count').textContent = boundaries.left.length;
+  document.getElementById('right-count').textContent = boundaries.right.length;
+}
+
+function drawBoundaries() {
+  // Clear previous layers
+  if (boundaryLayers.leftLine) { map.removeLayer(boundaryLayers.leftLine); boundaryLayers.leftLine = null; }
+  if (boundaryLayers.rightLine) { map.removeLayer(boundaryLayers.rightLine); boundaryLayers.rightLine = null; }
+  if (boundaryLayers.polygon) { map.removeLayer(boundaryLayers.polygon); boundaryLayers.polygon = null; }
+  boundaryLayers.leftMarkers.forEach(m => map.removeLayer(m));
+  boundaryLayers.rightMarkers.forEach(m => map.removeLayer(m));
+  boundaryLayers.leftMarkers = [];
+  boundaryLayers.rightMarkers = [];
+
+  // Draw left boundary
+  if (boundaries.left.length > 0) {
+    const coords = boundaries.left.map(p => [p.lat, p.lon]);
+    if (coords.length >= 2) {
+      boundaryLayers.leftLine = L.polyline(coords, { color: '#2196F3', weight: 3, opacity: 0.8 }).addTo(map);
+    }
+    boundaries.left.forEach((p, i) => {
+      const m = L.circleMarker([p.lat, p.lon], {
+        radius: 5, color: '#2196F3', fillColor: '#2196F3', fillOpacity: 0.8, weight: 1
+      }).addTo(map);
+      m.bindTooltip(`L ${Math.round(p.dist)}m`, { direction: 'top', permanent: false });
+      // Drag support
+      m.on('mousedown', (e) => startBoundaryDrag(e, 'left', i, m));
+      // Right-click delete
+      m.on('contextmenu', (e) => { L.DomEvent.stopPropagation(e); L.DomEvent.preventDefault(e); removeBoundaryPoint('left', i); });
+      boundaryLayers.leftMarkers.push(m);
+    });
+  }
+
+  // Draw right boundary
+  if (boundaries.right.length > 0) {
+    const coords = boundaries.right.map(p => [p.lat, p.lon]);
+    if (coords.length >= 2) {
+      boundaryLayers.rightLine = L.polyline(coords, { color: '#FF6D00', weight: 3, opacity: 0.8 }).addTo(map);
+    }
+    boundaries.right.forEach((p, i) => {
+      const m = L.circleMarker([p.lat, p.lon], {
+        radius: 5, color: '#FF6D00', fillColor: '#FF6D00', fillOpacity: 0.8, weight: 1
+      }).addTo(map);
+      m.bindTooltip(`R ${Math.round(p.dist)}m`, { direction: 'top', permanent: false });
+      m.on('mousedown', (e) => startBoundaryDrag(e, 'right', i, m));
+      m.on('contextmenu', (e) => { L.DomEvent.stopPropagation(e); L.DomEvent.preventDefault(e); removeBoundaryPoint('right', i); });
+      boundaryLayers.rightMarkers.push(m);
+    });
+  }
+
+  // Draw polygon if both boundaries have points and checkbox is checked
+  if (document.getElementById('chk-polygon').checked && boundaries.left.length >= 2 && boundaries.right.length >= 2) {
+    // Build polygon: left boundary forward, then right boundary reversed
+    const leftCoords = boundaries.left.map(p => [p.lat, p.lon]);
+    const rightCoords = boundaries.right.map(p => [p.lat, p.lon]).reverse();
+    const polyCoords = [...leftCoords, ...rightCoords];
+    boundaryLayers.polygon = L.polygon(polyCoords, {
+      color: 'rgba(255,255,255,0.3)', weight: 1,
+      fillColor: 'rgba(100,200,255,0.12)', fillOpacity: 1
+    }).addTo(map);
+    // Move polygon behind markers
+    boundaryLayers.polygon.bringToBack();
+  }
+}
+
+// ===== BOUNDARY DRAG =====
+function startBoundaryDrag(e, side, index, marker) {
+  L.DomEvent.stopPropagation(e);
+  L.DomEvent.preventDefault(e);
+  boundaryDragState = { side, index, marker };
+  map.dragging.disable();
+  map.on('mousemove', onBoundaryDrag);
+  map.on('mouseup', endBoundaryDrag);
+}
+
+function onBoundaryDrag(e) {
+  if (!boundaryDragState) return;
+  boundaryDragState.marker.setLatLng(e.latlng);
+}
+
+function endBoundaryDrag(e) {
+  if (!boundaryDragState) return;
+  const { side, index } = boundaryDragState;
+  moveBoundaryPoint(side, index, e.latlng);
+  boundaryDragState = null;
+  map.dragging.enable();
+  map.off('mousemove', onBoundaryDrag);
+  map.off('mouseup', endBoundaryDrag);
+}
+
+// ===== DIRECTION ARROWS =====
+function drawDirectionArrows() {
+  boundaryLayers.arrowMarkers.forEach(m => map.removeLayer(m));
+  boundaryLayers.arrowMarkers = [];
+
+  if (!document.getElementById('chk-direction-arrows').checked) return;
+  if (centerline.length < 10) return;
+
+  const maxDist = centerline[centerline.length - 1].dist;
+  const step = Math.max(50, maxDist / 40); // ~40 arrows across entire track
+
+  for (let d = step; d < maxDist - step; d += step) {
+    const pt1 = getPointAtDist(d);
+    const pt2 = getPointAtDist(d + 5);
+    if (!pt1 || !pt2) continue;
+
+    const angle = Math.atan2(pt2.lon - pt1.lon, pt2.lat - pt1.lat) * 180 / Math.PI;
+    const arrowIcon = L.divIcon({
+      className: '',
+      html: `<div style="transform:rotate(${90 - angle}deg);color:rgba(255,255,255,0.5);font-size:14px;font-weight:bold;text-shadow:0 0 3px rgba(0,0,0,0.8);">&#9654;</div>`,
+      iconSize: [14, 14],
+      iconAnchor: [7, 7]
+    });
+    const m = L.marker([pt1.lat, pt1.lon], { icon: arrowIcon, interactive: false }).addTo(map);
+    boundaryLayers.arrowMarkers.push(m);
+  }
+}
+
+// ===== BOUNDARY LOCALSTORAGE =====
+function saveBoundariesToStorage() {
+  try {
+    localStorage.setItem('trackEditor_boundaries', JSON.stringify(boundaries));
+  } catch (e) { /* storage full or unavailable */ }
+}
+
+function loadBoundariesFromStorage() {
+  try {
+    const data = localStorage.getItem('trackEditor_boundaries');
+    if (data) {
+      const parsed = JSON.parse(data);
+      if (parsed.left && parsed.right) {
+        boundaries = parsed;
+      }
+    }
+  } catch (e) { /* ignore */ }
+}
+
+// ===== AUTO-GENERATE BOUNDARIES =====
+function autoGenerateBoundaries() {
+  const width = parseFloat(document.getElementById('width-slider').value);
+  const interval = parseInt(document.getElementById('interval-slider').value);
+  if (centerline.length < 3) return;
+
+  const maxDist = centerline[centerline.length - 1].dist;
+  const newLeft = [];
+  const newRight = [];
+
+  for (let d = 0; d <= maxDist; d += interval) {
+    // Find direction at this distance
+    const pt = getPointAtDist(d);
+    const pt2 = getPointAtDist(Math.min(d + 2, maxDist));
+    if (!pt || !pt2) continue;
+
+    // Direction vector
+    const dLat = pt2.lat - pt.lat;
+    const dLon = pt2.lon - pt.lon;
+    const len = Math.sqrt(dLat * dLat + dLon * dLon);
+    if (len < 1e-10) continue;
+
+    // Normalize
+    const nLat = dLat / len;
+    const nLon = dLon / len;
+
+    // Perpendicular (left = -nLon, nLat) (right = nLon, -nLat)
+    // Convert meters to degrees
+    const latRad = pt.lat * Math.PI / 180;
+    const mPerDegLat = 111320;
+    const mPerDegLon = 111320 * Math.cos(latRad);
+
+    const offsetLatL = (-nLon) * width / mPerDegLat;
+    const offsetLonL = (nLat) * width / mPerDegLon;
+    const offsetLatR = (nLon) * width / mPerDegLat;
+    const offsetLonR = (-nLat) * width / mPerDegLon;
+
+    newLeft.push({ lat: pt.lat + offsetLatL, lon: pt.lon + offsetLonL, dist: d });
+    newRight.push({ lat: pt.lat + offsetLatR, lon: pt.lon + offsetLonR, dist: d });
+  }
+
+  // Save undo for both sides
+  if (boundaries.left.length > 0 || boundaries.right.length > 0) {
+    boundaryUndoStack.push({ side: 'left', action: 'reset', points: [...boundaries.left] });
+    boundaryUndoStack.push({ side: 'right', action: 'reset', points: [...boundaries.right] });
+  }
+
+  boundaries.left = newLeft;
+  boundaries.right = newRight;
+
+  updateBoundaryUI();
+  drawBoundaries();
+  saveBoundariesToStorage();
+}
+
+// ===== CENTERLINE EDITING =====
+function showCenterlineEditMarkers() {
+  hideCenterlineEditMarkers();
+
+  // Backup original if first time
+  if (!originalCenterline) {
+    originalCenterline = centerline.map(p => ({ ...p }));
+    saveCenterlineOriginal();
+  }
+
+  // Show draggable markers every N points
+  const step = Math.max(1, Math.round(clEditStep * (centerline.length / centerline[centerline.length - 1].dist)));
+  let count = 0;
+
+  for (let i = 0; i < centerline.length; i += step) {
+    const p = centerline[i];
+    const m = L.circleMarker([p.lat, p.lon], {
+      radius: 6, color: '#AB47BC', fillColor: '#CE93D8', fillOpacity: 0.9, weight: 2
+    }).addTo(map);
+    m.bindTooltip(`${Math.round(p.dist)}m`, { direction: 'top', permanent: false });
+    m.on('mousedown', (e) => startCenterlineDrag(e, i, m));
+    clEditMarkers.push(m);
+    count++;
+  }
+
+  document.getElementById('centerline-edit-info').textContent = `편집 포인트: ${count}개 (전체 ${centerline.length}개 중)`;
+}
+
+function hideCenterlineEditMarkers() {
+  clEditMarkers.forEach(m => map.removeLayer(m));
+  clEditMarkers = [];
+  document.getElementById('centerline-edit-info').textContent = '';
+}
+
+function startCenterlineDrag(e, idx, marker) {
+  L.DomEvent.stopPropagation(e);
+  L.DomEvent.preventDefault(e);
+  clDragState = { idx, marker };
+  map.dragging.disable();
+  map.on('mousemove', onCenterlineDrag);
+  map.on('mouseup', endCenterlineDrag);
+}
+
+function onCenterlineDrag(e) {
+  if (!clDragState) return;
+  clDragState.marker.setLatLng(e.latlng);
+}
+
+function endCenterlineDrag(e) {
+  if (!clDragState) return;
+  const { idx } = clDragState;
+
+  const newLat = e.latlng.lat;
+  const newLon = e.latlng.lng;
+  const dLat = newLat - centerline[idx].lat;
+  const dLon = newLon - centerline[idx].lon;
+
+  // Apply with Gaussian smoothing to neighbors
+  const smoothRadius = parseInt(document.getElementById('smooth-slider').value);
+  const step = Math.max(1, Math.round(clEditStep * (centerline.length / centerline[centerline.length - 1].dist)));
+
+  // Affect range: idx ± smoothRadius*step
+  const range = smoothRadius * step;
+  const sigma = range / 2.5;
+
+  for (let i = Math.max(0, idx - range); i <= Math.min(centerline.length - 1, idx + range); i++) {
+    const dist = Math.abs(i - idx);
+    const weight = sigma > 0 ? Math.exp(-(dist * dist) / (2 * sigma * sigma)) : (dist === 0 ? 1 : 0);
+    centerline[i].lat += dLat * weight;
+    centerline[i].lon += dLon * weight;
+  }
+
+  clDragState = null;
+  map.dragging.enable();
+  map.off('mousemove', onCenterlineDrag);
+  map.off('mouseup', endCenterlineDrag);
+
+  // Redraw everything affected
+  drawTrack();
+  drawDistanceMarkers();
+  drawCornerMarkers();
+  drawDirectionArrows();
+  hideCenterlineEditMarkers();
+  showCenterlineEditMarkers();
+  saveCenterlineToStorage();
+}
+
+function resetCenterline() {
+  if (!originalCenterline) {
+    // Try loading from storage
+    try {
+      const data = localStorage.getItem('trackEditor_originalCenterline');
+      if (data) originalCenterline = JSON.parse(data);
+    } catch (e) {}
+  }
+  if (!originalCenterline) { alert('원본 데이터가 없습니다.'); return; }
+  if (!confirm('중심선을 원본으로 되돌리시겠습니까?')) return;
+
+  centerline = originalCenterline.map(p => ({ ...p }));
+  localStorage.removeItem('trackEditor_centerline');
+
+  drawTrack();
+  drawDistanceMarkers();
+  drawCornerMarkers();
+  drawDirectionArrows();
+  if (currentMode === 'centerline') {
+    hideCenterlineEditMarkers();
+    showCenterlineEditMarkers();
+  }
+  drawBoundaries();
+}
+
+function exportCenterline() {
+  const data = centerline.map(p => [p.lat, p.lon, Math.round(p.dist * 10) / 10, Math.round(p.speed * 10) / 10]);
+  const json = JSON.stringify(data);
+  navigator.clipboard.writeText(json).then(() => alert('중심선 데이터 클립보드 복사 완료!')).catch(() => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    a.download = 'trp_compact_edited.json'; a.click();
+  });
+}
+
+function saveCenterlineToStorage() {
+  try {
+    const data = centerline.map(p => [p.lat, p.lon, p.dist, p.speed]);
+    localStorage.setItem('trackEditor_centerline', JSON.stringify(data));
+  } catch (e) {}
+}
+
+function saveCenterlineOriginal() {
+  try {
+    if (!localStorage.getItem('trackEditor_originalCenterline')) {
+      const data = originalCenterline.map(p => [p.lat, p.lon, p.dist, p.speed]);
+      localStorage.setItem('trackEditor_originalCenterline', JSON.stringify(data));
+    }
+  } catch (e) {}
+}
+
+function loadCenterlineFromStorage() {
+  try {
+    const data = localStorage.getItem('trackEditor_centerline');
+    if (data) {
+      const arr = JSON.parse(data);
+      if (arr.length === centerline.length) {
+        centerline = arr.map(p => ({ lat: p[0], lon: p[1], dist: p[2], speed: p[3] }));
+        return true;
+      }
+    }
+  } catch (e) {}
+  return false;
+}
+
+function loadCenterlineOriginalFromStorage() {
+  try {
+    const data = localStorage.getItem('trackEditor_originalCenterline');
+    if (data) {
+      originalCenterline = JSON.parse(data).map(p => ({ lat: p[0], lon: p[1], dist: p[2], speed: p[3] }));
+    }
+  } catch (e) {}
+}
+
+// ===== GPS OFFSET FUNCTIONS =====
+
+function stepOffset(axis, delta) {
+  const slider = document.getElementById(axis === 'lat' ? 'offset-lat-slider' : 'offset-lon-slider');
+  slider.value = Math.max(-100, Math.min(100, parseInt(slider.value) + delta));
+  onOffsetChange();
+}
+
+function onOffsetChange() {
+  const latUnits = parseInt(document.getElementById('offset-lat-slider').value);
+  const lonUnits = parseInt(document.getElementById('offset-lon-slider').value);
+
+  // 1 unit = 0.00001° ≈ 1.1m lat, ≈ 0.9m lon at ~37°
+  const latDeg = latUnits * 0.00001;
+  const lonDeg = lonUnits * 0.00001;
+  const latM = (latUnits * 1.11).toFixed(1);
+  const lonM = (lonUnits * 0.89).toFixed(1);
+
+  document.getElementById('offset-lat-val').textContent = `${latM}m`;
+  document.getElementById('offset-lon-val').textContent = `${lonM}m`;
+
+  // Show preview polyline (green dashed)
+  drawOffsetPreview(latDeg, lonDeg);
+
+  const info = document.getElementById('offset-preview-info');
+  if (latUnits === 0 && lonUnits === 0) {
+    info.textContent = '';
+  } else {
+    info.textContent = `미리보기: 북${latM}m, 동${lonM}m 이동`;
+  }
+}
+
+function drawOffsetPreview(latDeg, lonDeg) {
+  if (offsetPreviewLayer) { map.removeLayer(offsetPreviewLayer); offsetPreviewLayer = null; }
+  if (latDeg === 0 && lonDeg === 0) return;
+
+  const coords = [];
+  const step = Math.max(1, Math.floor(centerline.length / 300));
+  for (let i = 0; i < centerline.length; i += step) {
+    coords.push([centerline[i].lat + latDeg, centerline[i].lon + lonDeg]);
+  }
+  // Add last point
+  const last = centerline[centerline.length - 1];
+  coords.push([last.lat + latDeg, last.lon + lonDeg]);
+
+  offsetPreviewLayer = L.polyline(coords, {
+    color: '#4caf50', weight: 3, opacity: 0.8, dashArray: '8,6'
+  }).addTo(map);
+}
+
+function applyGpsOffset() {
+  const latUnits = parseInt(document.getElementById('offset-lat-slider').value);
+  const lonUnits = parseInt(document.getElementById('offset-lon-slider').value);
+  if (latUnits === 0 && lonUnits === 0) { alert('오프셋이 0입니다.'); return; }
+
+  const latDeg = latUnits * 0.00001;
+  const lonDeg = lonUnits * 0.00001;
+
+  if (!confirm(`GPS 주행선을 북${(latUnits*1.11).toFixed(1)}m, 동${(lonUnits*0.89).toFixed(1)}m 이동합니다.\n이 변경은 영구 적용됩니다. 진행하시겠습니까?`)) return;
+
+  // Backup original before first offset
+  if (!originalCenterline) {
+    originalCenterline = centerline.map(p => ({ ...p }));
+    saveCenterlineOriginal();
+  }
+
+  // Apply offset to all centerline points
+  for (const p of centerline) {
+    p.lat += latDeg;
+    p.lon += lonDeg;
+  }
+
+  // Track cumulative offset
+  appliedOffsetTotal.lat += latDeg;
+  appliedOffsetTotal.lon += lonDeg;
+  saveGpsOffsetToStorage();
+
+  // Reset sliders
+  document.getElementById('offset-lat-slider').value = 0;
+  document.getElementById('offset-lon-slider').value = 0;
+  if (offsetPreviewLayer) { map.removeLayer(offsetPreviewLayer); offsetPreviewLayer = null; }
+  document.getElementById('offset-lat-val').textContent = '0.0m';
+  document.getElementById('offset-lon-val').textContent = '0.0m';
+  document.getElementById('offset-preview-info').textContent = '적용 완료!';
+  setTimeout(() => { document.getElementById('offset-preview-info').textContent = ''; }, 2000);
+
+  // Redraw everything
+  drawTrack();
+  drawDistanceMarkers();
+  drawCornerMarkers();
+  drawDirectionArrows();
+  drawBoundaries();
+  saveCenterlineToStorage();
+
+  if (currentMode === 'centerline') {
+    hideCenterlineEditMarkers();
+    showCenterlineEditMarkers();
+  }
+}
+
+function resetGpsOffset() {
+  if (appliedOffsetTotal.lat === 0 && appliedOffsetTotal.lon === 0) {
+    alert('적용된 오프셋이 없습니다.');
+    return;
+  }
+  if (!confirm('적용된 GPS 오프셋을 모두 되돌리시겠습니까?')) return;
+
+  // Reverse the cumulative offset
+  for (const p of centerline) {
+    p.lat -= appliedOffsetTotal.lat;
+    p.lon -= appliedOffsetTotal.lon;
+  }
+
+  appliedOffsetTotal = { lat: 0, lon: 0 };
+  saveGpsOffsetToStorage();
+
+  // Reset UI
+  document.getElementById('offset-lat-slider').value = 0;
+  document.getElementById('offset-lon-slider').value = 0;
+  if (offsetPreviewLayer) { map.removeLayer(offsetPreviewLayer); offsetPreviewLayer = null; }
+  document.getElementById('offset-lat-val').textContent = '0.0m';
+  document.getElementById('offset-lon-val').textContent = '0.0m';
+  document.getElementById('offset-preview-info').textContent = '오프셋 초기화 완료';
+  setTimeout(() => { document.getElementById('offset-preview-info').textContent = ''; }, 2000);
+
+  drawTrack();
+  drawDistanceMarkers();
+  drawCornerMarkers();
+  drawDirectionArrows();
+  drawBoundaries();
+  saveCenterlineToStorage();
+
+  if (currentMode === 'centerline') {
+    hideCenterlineEditMarkers();
+    showCenterlineEditMarkers();
+  }
+}
+
+function saveGpsOffsetToStorage() {
+  try {
+    localStorage.setItem('trackEditor_gpsOffset', JSON.stringify(appliedOffsetTotal));
+  } catch (e) {}
+}
+
+function loadGpsOffsetFromStorage() {
+  try {
+    const data = localStorage.getItem('trackEditor_gpsOffset');
+    if (data) appliedOffsetTotal = JSON.parse(data);
+  } catch (e) {}
+}
+
+// ===== SATELLITE BOUNDARY DETECTION =====
+
+function setSatProgress(msg) {
+  document.getElementById('sat-progress').textContent = msg;
+}
+
+// --- Tile math (Web Mercator / Slippy map) ---
+function lonToTileX(lon, zoom) {
+  return Math.floor((lon + 180) / 360 * Math.pow(2, zoom));
+}
+
+function latToTileY(lat, zoom) {
+  const latRad = lat * Math.PI / 180;
+  return Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * Math.pow(2, zoom));
+}
+
+function tileXToLon(x, zoom) {
+  return x / Math.pow(2, zoom) * 360 - 180;
+}
+
+function tileYToLat(y, zoom) {
+  const n = Math.PI - 2 * Math.PI * y / Math.pow(2, zoom);
+  return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+}
+
+// --- Capture satellite tiles into a single canvas ---
+async function captureSatelliteTiles(bounds, zoom) {
+  const { minLat, maxLat, minLon, maxLon } = bounds;
+
+  const xMin = lonToTileX(minLon, zoom);
+  const xMax = lonToTileX(maxLon, zoom);
+  const yMin = latToTileY(maxLat, zoom); // note: y is inverted
+  const yMax = latToTileY(minLat, zoom);
+
+  const tilesX = xMax - xMin + 1;
+  const tilesY = yMax - yMin + 1;
+  const totalTiles = tilesX * tilesY;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = tilesX * 256;
+  canvas.height = tilesY * 256;
+  const ctx = canvas.getContext('2d');
+
+  let loaded = 0;
+
+  const tilePromises = [];
+  for (let ty = yMin; ty <= yMax; ty++) {
+    for (let tx = xMin; tx <= xMax; tx++) {
+      const px = (tx - xMin) * 256;
+      const py = (ty - yMin) * 256;
+      const url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${ty}/${tx}`;
+
+      const p = new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          ctx.drawImage(img, px, py);
+          loaded++;
+          setSatProgress(`타일 캡처 중... ${loaded}/${totalTiles}`);
+          resolve(true);
+        };
+        img.onerror = () => {
+          loaded++;
+          setSatProgress(`타일 캡처 중... ${loaded}/${totalTiles} (일부 실패)`);
+          resolve(false);
+        };
+        img.src = url;
+      });
+      tilePromises.push(p);
+    }
+  }
+
+  await Promise.all(tilePromises);
+
+  // Return canvas + geo info for coordinate conversion
+  return {
+    canvas,
+    tileBounds: {
+      xMin, yMin, xMax, yMax,
+      topLeftLon: tileXToLon(xMin, zoom),
+      topLeftLat: tileYToLat(yMin, zoom),
+      bottomRightLon: tileXToLon(xMax + 1, zoom),
+      bottomRightLat: tileYToLat(yMax + 1, zoom),
+      pixelWidth: tilesX * 256,
+      pixelHeight: tilesY * 256
+    },
+    zoom
+  };
+}
+
+// --- Image processing pipeline ---
+
+function toGrayscale(imageData) {
+  const data = imageData.data;
+  const gray = new Uint8Array(imageData.width * imageData.height);
+  for (let i = 0; i < gray.length; i++) {
+    const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
+    gray[i] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+  }
+  return gray;
+}
+
+function threshold(gray, w, h, thresh) {
+  const binary = new Uint8Array(w * h);
+  for (let i = 0; i < gray.length; i++) {
+    binary[i] = gray[i] < thresh ? 1 : 0; // dark (asphalt) = 1
+  }
+  return binary;
+}
+
+function morphologyClose(binary, w, h, iterations) {
+  let current = binary;
+  for (let iter = 0; iter < iterations; iter++) {
+    // Dilate
+    const dilated = new Uint8Array(w * h);
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const idx = y * w + x;
+        if (current[idx] || current[idx - 1] || current[idx + 1] ||
+            current[idx - w] || current[idx + w] ||
+            current[idx - w - 1] || current[idx - w + 1] ||
+            current[idx + w - 1] || current[idx + w + 1]) {
+          dilated[idx] = 1;
+        }
+      }
+    }
+    // Erode
+    const eroded = new Uint8Array(w * h);
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const idx = y * w + x;
+        if (dilated[idx] && dilated[idx - 1] && dilated[idx + 1] &&
+            dilated[idx - w] && dilated[idx + w]) {
+          eroded[idx] = 1;
+        }
+      }
+    }
+    current = eroded;
+  }
+  return current;
+}
+
+function morphologyOpen(binary, w, h, iterations) {
+  let current = binary;
+  for (let iter = 0; iter < iterations; iter++) {
+    // Erode
+    const eroded = new Uint8Array(w * h);
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const idx = y * w + x;
+        if (current[idx] && current[idx - 1] && current[idx + 1] &&
+            current[idx - w] && current[idx + w]) {
+          eroded[idx] = 1;
+        }
+      }
+    }
+    // Dilate
+    const dilated = new Uint8Array(w * h);
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const idx = y * w + x;
+        if (eroded[idx] || eroded[idx - 1] || eroded[idx + 1] ||
+            eroded[idx - w] || eroded[idx + w] ||
+            eroded[idx - w - 1] || eroded[idx - w + 1] ||
+            eroded[idx + w - 1] || eroded[idx + w + 1]) {
+          dilated[idx] = 1;
+        }
+      }
+    }
+    current = dilated;
+  }
+  return current;
+}
+
+function sobelEdge(binary, w, h) {
+  const edge = new Uint8Array(w * h);
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const idx = y * w + x;
+      // Sobel kernels
+      const gx = -binary[idx - w - 1] + binary[idx - w + 1]
+               - 2 * binary[idx - 1] + 2 * binary[idx + 1]
+               - binary[idx + w - 1] + binary[idx + w + 1];
+      const gy = -binary[idx - w - 1] - 2 * binary[idx - w] - binary[idx - w + 1]
+               + binary[idx + w - 1] + 2 * binary[idx + w] + binary[idx + w + 1];
+      const mag = Math.sqrt(gx * gx + gy * gy);
+      edge[idx] = mag > 0.5 ? 1 : 0;
+    }
+  }
+  return edge;
+}
+
+// Moore neighbor contour tracing
+function traceContours(edge, w, h, minLength) {
+  const visited = new Uint8Array(w * h);
+  const contours = [];
+
+  // 8-connectivity neighbor offsets: [dx, dy] clockwise from right
+  const dx8 = [1, 1, 0, -1, -1, -1, 0, 1];
+  const dy8 = [0, 1, 1, 1, 0, -1, -1, -1];
+
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const idx = y * w + x;
+      if (!edge[idx] || visited[idx]) continue;
+
+      // Start a new contour
+      const contour = [];
+      let cx = x, cy = y;
+      let dir = 0; // start direction
+
+      const startX = x, startY = y;
+      let steps = 0;
+      const maxSteps = w * h; // safety limit
+
+      do {
+        contour.push({ x: cx, y: cy });
+        visited[cy * w + cx] = 1;
+
+        // Search for next boundary pixel in clockwise order
+        let found = false;
+        const startDir = (dir + 5) % 8; // backtrack direction + 1
+        for (let d = 0; d < 8; d++) {
+          const nd = (startDir + d) % 8;
+          const nx = cx + dx8[nd];
+          const ny = cy + dy8[nd];
+          if (nx >= 0 && nx < w && ny >= 0 && ny < h && edge[ny * w + nx]) {
+            cx = nx;
+            cy = ny;
+            dir = nd;
+            found = true;
+            break;
+          }
+        }
+
+        if (!found) break;
+        steps++;
+      } while ((cx !== startX || cy !== startY) && steps < maxSteps);
+
+      if (contour.length >= minLength) {
+        contours.push(contour);
+      }
+    }
+  }
+
+  return contours;
+}
+
+// Douglas-Peucker line simplification
+function douglasPeucker(points, tolerance) {
+  if (points.length <= 2) return points;
+
+  let maxDist = 0, maxIdx = 0;
+  const start = points[0], end = points[points.length - 1];
+  const dx = end.x - start.x, dy = end.y - start.y;
+  const lenSq = dx * dx + dy * dy;
+
+  for (let i = 1; i < points.length - 1; i++) {
+    let dist;
+    if (lenSq === 0) {
+      dist = Math.sqrt((points[i].x - start.x) ** 2 + (points[i].y - start.y) ** 2);
+    } else {
+      const t = Math.max(0, Math.min(1, ((points[i].x - start.x) * dx + (points[i].y - start.y) * dy) / lenSq));
+      const projX = start.x + t * dx, projY = start.y + t * dy;
+      dist = Math.sqrt((points[i].x - projX) ** 2 + (points[i].y - projY) ** 2);
+    }
+    if (dist > maxDist) { maxDist = dist; maxIdx = i; }
+  }
+
+  if (maxDist > tolerance) {
+    const left = douglasPeucker(points.slice(0, maxIdx + 1), tolerance);
+    const right = douglasPeucker(points.slice(maxIdx), tolerance);
+    return left.slice(0, -1).concat(right);
+  }
+  return [start, end];
+}
+
+// Convert pixel coordinates to lat/lon using tile bounds
+function pixelToLatLon(px, py, tileBounds, zoom) {
+  const { xMin, yMin, pixelWidth, pixelHeight } = tileBounds;
+
+  // Pixel position → tile fractional coordinate
+  const tileX = xMin + (px / pixelWidth) * (tileBounds.xMax - xMin + 1);
+  const tileY = yMin + (py / pixelHeight) * (tileBounds.yMax - yMin + 1);
+
+  // Tile coordinate → lat/lon
+  const lon = tileX / Math.pow(2, zoom) * 360 - 180;
+  const n = Math.PI - 2 * Math.PI * tileY / Math.pow(2, zoom);
+  const lat = 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+
+  return { lat, lon };
+}
+
+// Classify boundary points as left or right of centerline using cross product
+function splitBoundaries(points) {
+  const left = [], right = [];
+
+  for (const p of points) {
+    // Find nearest centerline segment
+    let minD = Infinity, bestI = 0;
+    for (let i = 0; i < centerline.length; i++) {
+      const d = (centerline[i].lat - p.lat) ** 2 + (centerline[i].lon - p.lon) ** 2;
+      if (d < minD) { minD = d; bestI = i; }
+    }
+
+    // Direction vector of centerline at this point
+    const i1 = Math.max(0, bestI - 2);
+    const i2 = Math.min(centerline.length - 1, bestI + 2);
+    const dirLat = centerline[i2].lat - centerline[i1].lat;
+    const dirLon = centerline[i2].lon - centerline[i1].lon;
+
+    // Vector from centerline to boundary point
+    const toLat = p.lat - centerline[bestI].lat;
+    const toLon = p.lon - centerline[bestI].lon;
+
+    // Cross product: direction × toPoint
+    const cross = dirLon * toLat - dirLat * toLon;
+
+    const dist = findNearestDist({ lat: p.lat, lng: p.lon });
+    const bp = { lat: p.lat, lon: p.lon, dist };
+
+    if (cross > 0) {
+      left.push(bp);
+    } else {
+      right.push(bp);
+    }
+  }
+
+  // Sort by dist along centerline
+  left.sort((a, b) => a.dist - b.dist);
+  right.sort((a, b) => a.dist - b.dist);
+
+  return { left, right };
+}
+
+// Full satellite detection pipeline
+async function startSatelliteDetection() {
+  if (centerline.length < 10) { alert('중심선 데이터가 부족합니다.'); return; }
+
+  satDetectionCancelled = false;
+  document.getElementById('sat-detect-btn').style.display = 'none';
+  document.getElementById('sat-cancel-btn').style.display = '';
+  document.getElementById('sat-apply-btn').style.display = 'none';
+  clearSatPreview();
+
+  try {
+    // 1. Calculate bounding box with padding
+    setSatProgress('영역 계산 중...');
+    const paddingM = 30;
+    const paddingLat = paddingM / 111320;
+    const midLat = centerline[Math.floor(centerline.length / 2)].lat;
+    const paddingLon = paddingM / (111320 * Math.cos(midLat * Math.PI / 180));
+
+    let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+    for (const p of centerline) {
+      if (p.lat < minLat) minLat = p.lat;
+      if (p.lat > maxLat) maxLat = p.lat;
+      if (p.lon < minLon) minLon = p.lon;
+      if (p.lon > maxLon) maxLon = p.lon;
+    }
+    const bounds = {
+      minLat: minLat - paddingLat, maxLat: maxLat + paddingLat,
+      minLon: minLon - paddingLon, maxLon: maxLon + paddingLon
+    };
+
+    if (satDetectionCancelled) return;
+
+    // 2. Capture satellite tiles
+    setSatProgress('타일 캡처 시작...');
+    const zoom = 18;
+    const tileData = await captureSatelliteTiles(bounds, zoom);
+
+    if (satDetectionCancelled) return;
+
+    // 3. Process image
+    setSatProgress('경계 감지 중...');
+    await new Promise(r => setTimeout(r, 50)); // yield to UI
+
+    const ctx = tileData.canvas.getContext('2d');
+    const imgData = ctx.getImageData(0, 0, tileData.canvas.width, tileData.canvas.height);
+    const w = imgData.width, h = imgData.height;
+
+    const gray = toGrayscale(imgData);
+
+    const satThreshold = parseInt(document.getElementById('sat-threshold-slider').value);
+    const smoothing = parseInt(document.getElementById('sat-smoothing-slider').value);
+    const simplifyTolerance = parseFloat(document.getElementById('sat-simplify-slider').value);
+
+    let binary = threshold(gray, w, h, satThreshold);
+
+    if (satDetectionCancelled) return;
+
+    // Morphology: close then open
+    if (smoothing > 0) {
+      setSatProgress('노이즈 제거 중...');
+      await new Promise(r => setTimeout(r, 50));
+      binary = morphologyClose(binary, w, h, smoothing);
+      binary = morphologyOpen(binary, w, h, smoothing);
+    }
+
+    if (satDetectionCancelled) return;
+
+    // Edge detection
+    setSatProgress('엣지 검출 중...');
+    await new Promise(r => setTimeout(r, 50));
+    const edges = sobelEdge(binary, w, h);
+
+    if (satDetectionCancelled) return;
+
+    // Contour tracing
+    setSatProgress('컨투어 추출 중...');
+    await new Promise(r => setTimeout(r, 50));
+    const minContourLen = 30;
+    const contours = traceContours(edges, w, h, minContourLen);
+
+    if (satDetectionCancelled) return;
+
+    // Store debug data
+    if (document.getElementById('chk-sat-debug').checked) {
+      showSatDebug(edges, w, h, contours, tileData);
+    }
+
+    // 4. Simplify contours and convert to lat/lon
+    setSatProgress('좌표 변환 중...');
+    await new Promise(r => setTimeout(r, 50));
+
+    // Convert simplify tolerance from meters to pixels
+    // At zoom 18, 1 pixel ≈ 0.6m (at equator), adjust for latitude
+    const metersPerPixel = 156543.03392 * Math.cos(midLat * Math.PI / 180) / Math.pow(2, zoom);
+    const pixelTolerance = simplifyTolerance / metersPerPixel;
+
+    const allPoints = [];
+    for (const contour of contours) {
+      const simplified = douglasPeucker(contour, pixelTolerance);
+      for (const pt of simplified) {
+        const ll = pixelToLatLon(pt.x, pt.y, tileData.tileBounds, zoom);
+        // Filter: only keep points near the centerline (within ~25m)
+        const nearDist = findNearestIdx({ lat: ll.lat, lng: ll.lon }).distFromTrack;
+        if (nearDist < 25) {
+          allPoints.push(ll);
+        }
+      }
+    }
+
+    if (satDetectionCancelled) return;
+
+    // 5. Split into left/right
+    setSatProgress('좌/우 분류 중...');
+    satPreviewBoundaries = splitBoundaries(allPoints);
+
+    // 6. Show preview
+    setSatProgress(`감지 완료: 왼쪽 ${satPreviewBoundaries.left.length}개, 오른쪽 ${satPreviewBoundaries.right.length}개`);
+    showSatPreview();
+
+    document.getElementById('sat-apply-btn').style.display = '';
+
+  } catch (err) {
+    setSatProgress(`오류: ${err.message}`);
+    console.error('Satellite detection error:', err);
+  } finally {
+    document.getElementById('sat-detect-btn').style.display = '';
+    document.getElementById('sat-cancel-btn').style.display = 'none';
+  }
+}
+
+function cancelSatelliteDetection() {
+  satDetectionCancelled = true;
+  setSatProgress('취소됨');
+  document.getElementById('sat-detect-btn').style.display = '';
+  document.getElementById('sat-cancel-btn').style.display = 'none';
+  clearSatPreview();
+}
+
+function showSatPreview() {
+  clearSatPreview();
+  if (!satPreviewBoundaries) return;
+
+  const { left, right } = satPreviewBoundaries;
+
+  // Left boundary preview (dashed blue)
+  if (left.length >= 2) {
+    const coords = left.map(p => [p.lat, p.lon]);
+    const line = L.polyline(coords, { color: '#00bcd4', weight: 2, opacity: 0.8, dashArray: '6,4' }).addTo(map);
+    satPreviewLayers.push(line);
+  }
+  left.forEach(p => {
+    const m = L.circleMarker([p.lat, p.lon], { radius: 3, color: '#00bcd4', fillColor: '#00bcd4', fillOpacity: 0.6, weight: 1 }).addTo(map);
+    satPreviewLayers.push(m);
+  });
+
+  // Right boundary preview (dashed orange)
+  if (right.length >= 2) {
+    const coords = right.map(p => [p.lat, p.lon]);
+    const line = L.polyline(coords, { color: '#ffab40', weight: 2, opacity: 0.8, dashArray: '6,4' }).addTo(map);
+    satPreviewLayers.push(line);
+  }
+  right.forEach(p => {
+    const m = L.circleMarker([p.lat, p.lon], { radius: 3, color: '#ffab40', fillColor: '#ffab40', fillOpacity: 0.6, weight: 1 }).addTo(map);
+    satPreviewLayers.push(m);
+  });
+}
+
+function clearSatPreview() {
+  satPreviewLayers.forEach(l => map.removeLayer(l));
+  satPreviewLayers = [];
+}
+
+function applySatelliteBoundaries() {
+  if (!satPreviewBoundaries) { alert('먼저 감지를 실행하세요.'); return; }
+  if (!confirm(`왼쪽 ${satPreviewBoundaries.left.length}개, 오른쪽 ${satPreviewBoundaries.right.length}개 경계 포인트를 적용합니다.\n기존 경계는 덮어씁니다. 진행하시겠습니까?`)) return;
+
+  // Save undo
+  if (boundaries.left.length > 0 || boundaries.right.length > 0) {
+    boundaryUndoStack.push({ side: 'left', action: 'reset', points: [...boundaries.left] });
+    boundaryUndoStack.push({ side: 'right', action: 'reset', points: [...boundaries.right] });
+  }
+
+  boundaries.left = satPreviewBoundaries.left;
+  boundaries.right = satPreviewBoundaries.right;
+
+  clearSatPreview();
+  satPreviewBoundaries = null;
+  document.getElementById('sat-apply-btn').style.display = 'none';
+
+  updateBoundaryUI();
+  drawBoundaries();
+  saveBoundariesToStorage();
+  setSatProgress('경계 적용 완료!');
+  setTimeout(() => setSatProgress(''), 2000);
+}
+
+function showSatDebug(edges, w, h, contours, tileData) {
+  // Create or reuse debug canvas overlay
+  let debugDiv = document.getElementById('sat-debug-container');
+  if (!debugDiv) {
+    debugDiv = document.createElement('div');
+    debugDiv.id = 'sat-debug-container';
+    debugDiv.style.cssText = 'position:fixed;top:10px;left:10px;z-index:9999;background:rgba(0,0,0,0.9);padding:8px;border-radius:8px;max-width:400px;max-height:400px;overflow:auto;';
+    debugDiv.innerHTML = '<div style="color:#fff;font-size:11px;margin-bottom:4px;">엣지 + 컨투어 디버그 <button onclick="this.parentElement.parentElement.style.display=\'none\'" style="float:right;background:none;border:none;color:#f88;cursor:pointer;">X</button></div>';
+    const debugCanvas = document.createElement('canvas');
+    debugCanvas.id = 'sat-debug-canvas';
+    debugCanvas.style.cssText = 'width:100%;image-rendering:pixelated;';
+    debugDiv.appendChild(debugCanvas);
+    document.body.appendChild(debugDiv);
+  }
+  debugDiv.style.display = '';
+
+  const dc = document.getElementById('sat-debug-canvas');
+  // Scale down for display
+  const scale = Math.min(1, 380 / w);
+  dc.width = Math.round(w * scale);
+  dc.height = Math.round(h * scale);
+
+  const dctx = dc.getContext('2d');
+  dctx.fillStyle = '#000';
+  dctx.fillRect(0, 0, dc.width, dc.height);
+
+  // Draw edges in white
+  const imgD = dctx.createImageData(dc.width, dc.height);
+  for (let y = 0; y < dc.height; y++) {
+    for (let x = 0; x < dc.width; x++) {
+      const srcX = Math.floor(x / scale);
+      const srcY = Math.floor(y / scale);
+      const idx = (y * dc.width + x) * 4;
+      if (edges[srcY * w + srcX]) {
+        imgD.data[idx] = 255;
+        imgD.data[idx + 1] = 255;
+        imgD.data[idx + 2] = 255;
+      }
+      imgD.data[idx + 3] = 255;
+    }
+  }
+  dctx.putImageData(imgD, 0, 0);
+
+  // Draw contours in colors
+  const colors = ['#ff0', '#0ff', '#f0f', '#0f0', '#f80', '#08f'];
+  for (let ci = 0; ci < contours.length; ci++) {
+    dctx.strokeStyle = colors[ci % colors.length];
+    dctx.lineWidth = 1;
+    dctx.beginPath();
+    for (let pi = 0; pi < contours[ci].length; pi++) {
+      const x = contours[ci][pi].x * scale;
+      const y = contours[ci][pi].y * scale;
+      if (pi === 0) dctx.moveTo(x, y); else dctx.lineTo(x, y);
+    }
+    dctx.stroke();
+  }
+}
+
+function toggleSatDebug() {
+  const debugDiv = document.getElementById('sat-debug-container');
+  if (debugDiv) {
+    debugDiv.style.display = document.getElementById('chk-sat-debug').checked ? '' : 'none';
+  }
+}
+
+// ===== EXPORT =====
+function exportCorners() {
+  const output = {
+    track: { id:'trp', name:'태백 레이싱파크', shortName:'TRP', totalLength: Math.round(centerline[centerline.length-1].dist) },
+    corners: corners.map(c => ({
+      id:c.id, name:c.name, direction:c.direction, type:c.type,
+      entry: c.entry ? {lat:c.entry.lat, lon:c.entry.lon, dist:Math.round(c.entry.dist)} : null,
+      apex: c.apex ? {lat:c.apex.lat, lon:c.apex.lon, dist:Math.round(c.apex.dist)} : null,
+      exit: c.exit ? {lat:c.exit.lat, lon:c.exit.lon, dist:Math.round(c.exit.dist)} : null,
+      radius_min: c.radius_min, radius_apex: c.radius_apex, notes: c.notes
+    }))
+  };
+
+  // Include boundaries if any exist
+  if (boundaries.left.length > 0 || boundaries.right.length > 0) {
+    output.boundaries = {
+      left: boundaries.left.map(p => ({ lat: p.lat, lon: p.lon, dist: Math.round(p.dist) })),
+      right: boundaries.right.map(p => ({ lat: p.lat, lon: p.lon, dist: Math.round(p.dist) }))
+    };
+  }
+
+  // Include GPS offset if applied
+  if (appliedOffsetTotal.lat !== 0 || appliedOffsetTotal.lon !== 0) {
+    output.gpsOffset = {
+      lat: appliedOffsetTotal.lat,
+      lon: appliedOffsetTotal.lon,
+      latMeters: Math.round(appliedOffsetTotal.lat * 111320 * 10) / 10,
+      lonMeters: Math.round(appliedOffsetTotal.lon * 111320 * Math.cos(centerline[0].lat * Math.PI / 180) * 10) / 10
+    };
+  }
+
+  const json = JSON.stringify(output, null, 2);
+  navigator.clipboard.writeText(json).then(() => alert('클립보드 복사 완료!')).catch(() => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([json],{type:'application/json'}));
+    a.download = 'trp_corners.json'; a.click();
+  });
+}
+
+// ===== THRESHOLD-BASED CORNER DETECTION =====
+function onThresholdChange(val) {
+  document.getElementById('threshold-val').textContent = val + 'm';
+  detectCornersFromThreshold();
+}
+
+function detectCornersFromThreshold() {
+  if (!curvatureData.length) return;
+  const threshold = parseInt(document.getElementById('threshold-slider').value);
+
+  // 1. Find contiguous sections where radius <= threshold
+  const sections = [];
+  let inSection = false;
+  let sectionStart = -1;
+
+  for (let i = 0; i < curvatureData.length; i++) {
+    const radius = curvatureData[i][2]; // [dist, curvature_deg_m, radius_m]
+    if (radius <= threshold) {
+      if (!inSection) { sectionStart = i; inSection = true; }
+    } else {
+      if (inSection) {
+        sections.push({ startIdx: sectionStart, endIdx: i - 1 });
+        inSection = false;
+      }
+    }
+  }
+  if (inSection) sections.push({ startIdx: sectionStart, endIdx: curvatureData.length - 1 });
+
+  // 2. Merge only truly fragmented sections (< 4m gap AND max R in gap < threshold * 1.3)
+  const merged = [];
+  for (const sec of sections) {
+    if (merged.length > 0) {
+      const prev = merged[merged.length - 1];
+      const gapDist = curvatureData[sec.startIdx][0] - curvatureData[prev.endIdx][0];
+      if (gapDist < 4) {
+        prev.endIdx = sec.endIdx;
+        continue;
+      }
+    }
+    merged.push({ ...sec });
+  }
+
+  // 3. Split long sections at significant R peaks (local maxima indicating separate corners)
+  const finalSections = [];
+  for (const sec of merged) {
+    const len = sec.endIdx - sec.startIdx;
+    if (len < 5) { finalSections.push(sec); continue; }
+
+    // Find local R maxima within the section
+    const splitPoints = [];
+    for (let i = sec.startIdx + 3; i <= sec.endIdx - 3; i++) {
+      const rHere = curvatureData[i][2];
+      const rBefore = Math.min(...Array.from({length:3}, (_,k) => curvatureData[i-k-1][2]));
+      const rAfter = Math.min(...Array.from({length:3}, (_,k) => curvatureData[i+k+1][2]));
+      // If R here is significantly higher than both neighbors, it's a split point
+      if (rHere > rBefore * 1.8 && rHere > rAfter * 1.8 && rHere > threshold * 0.4) {
+        splitPoints.push(i);
+      }
+    }
+
+    if (splitPoints.length === 0) {
+      finalSections.push(sec);
+    } else {
+      // Split at each split point
+      let start = sec.startIdx;
+      for (const sp of splitPoints) {
+        if (sp > start + 2) finalSections.push({ startIdx: start, endIdx: sp - 1 });
+        start = sp + 1;
+      }
+      if (start <= sec.endIdx) finalSections.push({ startIdx: start, endIdx: sec.endIdx });
+    }
+  }
+
+  // 4. For each section, find apex (min radius point), entry, exit
+  const newCorners = [];
+  for (let ci = 0; ci < finalSections.length; ci++) {
+    const sec = finalSections[ci];
+    let minR = Infinity, apexIdx = sec.startIdx;
+    for (let i = sec.startIdx; i <= sec.endIdx; i++) {
+      if (curvatureData[i][2] < minR) {
+        minR = curvatureData[i][2];
+        apexIdx = i;
+      }
+    }
+
+    const entryDist = curvatureData[sec.startIdx][0];
+    const apexDist = curvatureData[apexIdx][0];
+    const exitDist = curvatureData[sec.endIdx][0];
+
+    const entryPt = getPointAtDist(entryDist);
+    const apexPt = getPointAtDist(apexDist);
+    const exitPt = getPointAtDist(exitDist);
+
+    if (!entryPt || !apexPt || !exitPt) continue;
+
+    const dir = detectDirection(
+      { lat: entryPt.lat, lon: entryPt.lon },
+      { lat: apexPt.lat, lon: apexPt.lon },
+      { lat: exitPt.lat, lon: exitPt.lon }
+    );
+
+    const type = minR < 25 ? 'hairpin' : minR < 60 ? 'sweeper' : 'kink';
+
+    newCorners.push({
+      id: ci + 1,
+      name: `T${ci + 1}`,
+      direction: dir,
+      type: type,
+      entry: { lat: entryPt.lat, lon: entryPt.lon, dist: Math.round(entryDist) },
+      apex: { lat: apexPt.lat, lon: apexPt.lon, dist: Math.round(apexDist) },
+      exit: { lat: exitPt.lat, lon: exitPt.lon, dist: Math.round(exitDist) },
+      radius_min: Math.round(minR * 10) / 10,
+      radius_apex: Math.round(minR * 10) / 10,
+      notes: ''
+    });
+  }
+
+  // 4. Connect corners: exit of N = entry of N+1
+  for (let i = 0; i < newCorners.length - 1; i++) {
+    newCorners[i + 1].entry = { ...newCorners[i].exit };
+  }
+
+  // 5. Re-detect direction after connecting
+  for (const c of newCorners) {
+    c.direction = detectDirection(c.entry, c.apex, c.exit);
+  }
+
+  // 6. Update state
+  corners = newCorners;
+  selectedCornerIdx = corners.length > 0 ? 0 : -1;
+
+  document.getElementById('corner-count').textContent = `코너: ${corners.length}개`;
+  renderCornerList();
+  drawCornerMarkers();
+  drawChart();
+}
+
+// ===== INIT =====
+async function init() {
+  await loadData();
+
+  // Load edited centerline from storage (before initMap draws track)
+  loadCenterlineOriginalFromStorage();
+  const hadEdited = loadCenterlineFromStorage();
+  if (hadEdited && !originalCenterline) {
+    // Re-fetch original for reset capability
+    try {
+      const resp = await fetch('./trp_compact.json');
+      const raw = await resp.json();
+      originalCenterline = raw.map(p => ({ lat: p[0], lon: p[1], dist: p[2], speed: p[3] }));
+      saveCenterlineOriginal();
+    } catch (e) {}
+  }
+
+  loadGpsOffsetFromStorage();
+  initMap();
+  await loadCorners();
+  loadBoundariesFromStorage();
+  renderCornerList();
+  drawCornerMarkers();
+  initChartEvents();
+  drawChart();
+  updateBoundaryUI();
+  drawBoundaries();
+  drawDirectionArrows();
+  document.getElementById('corner-count').textContent = `코너: ${corners.length}개`;
+  window.addEventListener('resize', drawChart);
+
+  // Ctrl+Z for boundary undo
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 'z') {
+      const isBoundaryMode = currentMode === 'left-boundary' || currentMode === 'right-boundary';
+      if (isBoundaryMode || boundaryUndoStack.length > 0) {
+        e.preventDefault();
+        undoBoundary();
+      }
+    }
+  });
+
+  // Prevent context menu on map (for right-click delete on boundary markers)
+  document.getElementById('map').addEventListener('contextmenu', (e) => {
+    if (currentMode === 'left-boundary' || currentMode === 'right-boundary' || currentMode === 'centerline') {
+      e.preventDefault();
+    }
+  });
+}
+init();
+</script>
+</body>
+</html>
