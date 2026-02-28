@@ -1,13 +1,23 @@
 DROP TABLE IF EXISTS LapMetrics;
 DROP TABLE IF EXISTS Corners;
 DROP TABLE IF EXISTS Sessions;
+DROP TABLE IF EXISTS Users;
+
+CREATE TABLE Users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    google_id TEXT UNIQUE NOT NULL,
+    email TEXT NOT NULL,
+    name TEXT,
+    picture_url TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 
 CREATE TABLE Sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at TEXT,
     venue TEXT,
     vehicle TEXT,
-    user_id TEXT
+    user_id INTEGER REFERENCES Users(id)
 );
 
 CREATE TABLE Corners (

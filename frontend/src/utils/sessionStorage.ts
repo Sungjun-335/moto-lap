@@ -26,7 +26,7 @@ function getDB() {
 
 // ─── Sessions ───
 
-export async function saveSession(session: SessionData): Promise<string> {
+export async function saveSession(session: SessionData, userId?: string): Promise<string> {
     const id = session.id || crypto.randomUUID();
     const bestLapTime = session.laps?.length
         ? Math.min(...session.laps.map(l => l.duration))
@@ -38,6 +38,7 @@ export async function saveSession(session: SessionData): Promise<string> {
         dataPoints: session.dataPoints,
         savedAt: Date.now(),
         bestLapTime,
+        userId,
     };
     const db = await getDB();
     await db.put(STORE_NAME, stored);
@@ -49,7 +50,10 @@ export async function loadSession(id: string): Promise<StoredSession | undefined
     return db.get(STORE_NAME, id);
 }
 
-export async function listSessions(): Promise<SessionSummary[]> {
+export async function listSessions(userId?: string): Promise<SessionSummary[]> {
+    // Not logged in → no saved sessions visible
+    if (!userId) return [];
+
     const db = await getDB();
     const tx = db.transaction(STORE_NAME, 'readonly');
     const store = tx.objectStore(STORE_NAME);
@@ -58,17 +62,24 @@ export async function listSessions(): Promise<SessionSummary[]> {
 
     while (cursor) {
         const stored = cursor.value as StoredSession;
-        const lapCount = stored.beaconMarkers.length > 0
-            ? stored.beaconMarkers.length
-            : 1;
 
-        summaries.push({
-            id: stored.id,
-            metadata: stored.metadata,
-            savedAt: stored.savedAt,
-            lapCount,
-            bestLapTime: stored.bestLapTime ?? null,
-        });
+        // Show only sessions belonging to this user
+        const match = stored.userId === userId;
+
+        if (match) {
+            const lapCount = stored.beaconMarkers.length > 0
+                ? stored.beaconMarkers.length
+                : 1;
+
+            summaries.push({
+                id: stored.id,
+                metadata: stored.metadata,
+                savedAt: stored.savedAt,
+                lapCount,
+                bestLapTime: stored.bestLapTime ?? null,
+                userId: stored.userId,
+            });
+        }
         cursor = await cursor.continue();
     }
 
@@ -79,13 +90,7 @@ export async function listSessions(): Promise<SessionSummary[]> {
 export async function deleteSession(id: string): Promise<void> {
     const db = await getDB();
     await db.delete(STORE_NAME, id);
-    // Also delete associated reports
-    const reports = await listReports(id);
-    const tx = db.transaction(REPORTS_STORE, 'readwrite');
-    for (const r of reports) {
-        await tx.store.delete(r.id);
-    }
-    await tx.done;
+    // Reports are intentionally preserved — they remain accessible via "Past Reports" in the modal
 }
 
 // ─── Reports ───

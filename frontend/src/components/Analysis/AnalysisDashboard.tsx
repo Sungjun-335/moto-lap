@@ -3,7 +3,7 @@ import type { SessionData, Lap } from '../../types';
 
 import GForceChart from './GForceChart';
 import AnalysisMap from './AnalysisMap';
-import { RotateCcw, Play, Pause, Square, Plus, X, ChevronDown, LayoutDashboard, LineChart, MapPin, ArrowLeft, Sparkles, Waves } from 'lucide-react';
+import { RotateCcw, Play, Pause, Square, Plus, X, ChevronDown, LayoutDashboard, LineChart, MapPin, ArrowLeft, Sparkles, Waves, Maximize2 } from 'lucide-react';
 import { AnalysisChartWrapper } from './AnalysisChartWrapper';
 import { useAnalysisState } from './useAnalysisState';
 import CornerAnalysisPanel from './CornerAnalysisPanel';
@@ -17,7 +17,7 @@ import type { StoredReport } from '../../utils/sessionStorage';
 import { useTranslation } from '../../i18n/context';
 import { getChartLabel, getChartTitle } from '../../i18n/chartLabels';
 import { formatLapTime } from '../../utils/formatLapTime';
-import { smoothGData } from '../../utils/smoothing';
+import { smoothGData, smoothGyroData } from '../../utils/smoothing';
 import { pickBestLap } from '../../utils/lapFilter';
 
 // const WhatIfPanel = lazy(() => import('./WhatIfPanel')); // TODO: 추후 구현 예정
@@ -136,6 +136,20 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
         [viewData, gSmoothing]
     );
 
+    // Gyro (Pitch/Roll/Yaw) smoothing toggle
+    const [gyroSmoothing, setGyroSmoothing] = useState(true);
+    const GYRO_CHART_IDS = new Set(['pitch_rate', 'roll_rate', 'yaw_rate']);
+    const smoothedGyroData = useMemo(
+        () => gyroSmoothing ? smoothGyroData(viewData) : viewData,
+        [viewData, gyroSmoothing]
+    );
+
+    // Driving event markers toggle
+    const [showDrivingMarkers, setShowDrivingMarkers] = useState(false);
+
+    // Expanded chart modal state
+    const [expandedChartId, setExpandedChartId] = useState<string | null>(null);
+
     // Chart selection state
     const [visibleCharts, setVisibleCharts] = useState<string[]>(getDefaultVisibleCharts);
     const [showChartPicker, setShowChartPicker] = useState(false);
@@ -160,6 +174,16 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
     }, [showChartPicker]);
+
+    // Close expanded chart on Escape
+    useEffect(() => {
+        if (!expandedChartId) return;
+        const handler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setExpandedChartId(null);
+        };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [expandedChartId]);
 
     const handleHorizontalResize = useCallback((delta: number) => {
         if (!containerRef.current) return;
@@ -232,14 +256,14 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
         return () => { cancelled = true; };
     }, [data.id, refLapIndex, anaLapIndex, getCacheKey]);
 
-    // Load all saved reports (across all sessions)
+    // Load all saved reports — refresh on mount, after generation, and when modal opens
     useEffect(() => {
         let cancelled = false;
         listAllReports().then(reports => {
             if (!cancelled) setAllSavedReports(reports);
         });
         return () => { cancelled = true; };
-    }, [hasSavedReport]);
+    }, [hasSavedReport, reportState.open]);
 
     const fetchReport = useCallback(async (lang: 'ko' | 'en') => {
         abortRef.current?.abort();
@@ -249,7 +273,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
         setReportState({ open: true, status: 'loading', report: '', error: '' });
 
         try {
-            const rd = collectReportData(data, refLapIndex, anaLapIndex);
+            const rd = collectReportData(data, refLapIndex, anaLapIndex, viewData, cornerDistanceRanges);
             const prompt = buildReportPrompt(rd, lang);
             const report = await generateReport(prompt, ac.signal);
             if (!ac.signal.aborted) {
@@ -527,6 +551,30 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
                                 <Waves size={11} />
                                 {t.analysisDashboard.gSmooth}
                             </button>
+                            <button
+                                onClick={() => setGyroSmoothing(prev => !prev)}
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-md border transition-all ${
+                                    gyroSmoothing
+                                        ? 'bg-cyan-600/30 border-cyan-500/50 text-cyan-300'
+                                        : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600'
+                                }`}
+                                title={gyroSmoothing ? t.analysisDashboard.gyroSmoothOn : t.analysisDashboard.gyroSmoothOff}
+                            >
+                                <Waves size={11} />
+                                {t.analysisDashboard.gyroSmooth}
+                            </button>
+                            <button
+                                onClick={() => setShowDrivingMarkers(prev => !prev)}
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-md border transition-all ${
+                                    showDrivingMarkers
+                                        ? 'bg-amber-600/30 border-amber-500/50 text-amber-300'
+                                        : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600'
+                                }`}
+                                title={showDrivingMarkers ? t.analysisDashboard.drivingMarkersOn : t.analysisDashboard.drivingMarkersOff}
+                            >
+                                <MapPin size={11} />
+                                {t.analysisDashboard.drivingMarkers}
+                            </button>
                             <div className="h-4 w-px bg-zinc-700" />
                             {activeCharts.map(chart => (
                                 <span
@@ -689,7 +737,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
                                     chartId={chart.id}
                                     ChartComponent={chart.component}
                                     flexConfig={chart.flexConfig ? { ...chart.flexConfig, title: getChartTitle(chart.id, t) } : undefined}
-                                    data={G_CHART_IDS.has(chart.id) ? smoothedViewData : viewData}
+                                    data={G_CHART_IDS.has(chart.id) ? smoothedViewData : GYRO_CHART_IDS.has(chart.id) ? smoothedGyroData : viewData}
                                     height={chart.height}
                                     dragState={dragState}
                                     onMouseMove={handleChartMouseMove}
@@ -698,7 +746,8 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
                                     zoomDomain={zoomDomain}
                                     cursorDistance={cursorDistance}
                                     cornerRanges={cornerDistanceRanges}
-                                    drivingEventMarkers={chart.id === 'driving_events' ? drivingEventMarkers : undefined}
+                                    drivingEventMarkers={chart.id === 'driving_events' || showDrivingMarkers ? drivingEventMarkers : undefined}
+                                    onDoubleClick={() => setExpandedChartId(chart.id)}
                                 />
                             ))}
                             <div className="h-6"></div>
@@ -722,6 +771,56 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
                 </div>
             </div>
             </div>
+
+            {/* Expanded Chart Modal */}
+            {expandedChartId && (() => {
+                const chart = CHART_REGISTRY.find(c => c.id === expandedChartId);
+                if (!chart) return null;
+                const chartData = G_CHART_IDS.has(chart.id) ? smoothedViewData : GYRO_CHART_IDS.has(chart.id) ? smoothedGyroData : viewData;
+                // 85vh modal - header(40px) - padding(32px) = available chart height
+                const expandedHeight = Math.round(window.innerHeight * 0.85 - 72);
+                return (
+                    <div
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+                        onClick={(e) => { if (e.target === e.currentTarget) setExpandedChartId(null); }}
+                    >
+                        <div className="w-[95vw] h-[85vh] bg-zinc-900 rounded-xl border border-zinc-700 shadow-2xl flex flex-col overflow-hidden">
+                            {/* Modal Header */}
+                            <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 flex-shrink-0">
+                                <h2 className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
+                                    <Maximize2 size={14} className="text-zinc-400" />
+                                    {getChartTitle(chart.id, t)}
+                                </h2>
+                                <span className="text-[10px] text-zinc-500">{t.analysisDashboard.expandClose}</span>
+                                <button
+                                    onClick={() => setExpandedChartId(null)}
+                                    className="text-zinc-400 hover:text-white transition-colors p-1 rounded hover:bg-zinc-700"
+                                >
+                                    <X size={16} />
+                                </button>
+                            </div>
+                            {/* Expanded Chart */}
+                            <div className="flex-1 p-4 min-h-0">
+                                <AnalysisChartWrapper
+                                    chartId={`expanded-${chart.id}`}
+                                    ChartComponent={chart.component}
+                                    flexConfig={chart.flexConfig ? { ...chart.flexConfig, title: getChartTitle(chart.id, t) } : undefined}
+                                    data={chartData}
+                                    height={expandedHeight}
+                                    dragState={dragState}
+                                    onMouseMove={handleChartMouseMove}
+                                    onMouseDown={handleChartMouseDown}
+                                    onMouseUp={handleChartMouseUp}
+                                    zoomDomain={zoomDomain}
+                                    cursorDistance={cursorDistance}
+                                    cornerRanges={cornerDistanceRanges}
+                                    drivingEventMarkers={chart.id === 'driving_events' || showDrivingMarkers ? drivingEventMarkers : undefined}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* AI Report Modal */}
             {reportState.open && (

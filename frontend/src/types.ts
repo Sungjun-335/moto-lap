@@ -92,6 +92,8 @@ export interface SessionData {
         condition?: 'dry' | 'wet';
         sessionType?: 'practice' | 'race' | 'warmup' | 'trackday';
         eventName?: string;
+        fileName?: string;
+        riderName?: string;
     };
     laps: Lap[];
     dataPoints: LapData[]; // Keep full session data available
@@ -104,6 +106,7 @@ export interface StoredSession {
     dataPoints: LapData[];
     savedAt: number;
     bestLapTime?: number;
+    userId?: string;
 }
 
 export interface SessionSummary {
@@ -112,6 +115,7 @@ export interface SessionSummary {
     savedAt: number;
     lapCount: number;
     bestLapTime: number | null;
+    userId?: string;
 }
 
 // ===== Driving Feature Types =====

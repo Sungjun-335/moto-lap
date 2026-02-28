@@ -6,10 +6,12 @@ import SessionList from './components/SessionList';
 import type { SessionData, SessionSummary } from './types';
 import { saveSession, listSessions, loadSession, deleteSession } from './utils/sessionStorage';
 import { reconstructSession } from './utils/sessionReconstruct';
+import { useAuth } from './auth/AuthContext';
 
 type ViewState = 'landing' | 'list' | 'upload' | 'analysis';
 
 function App() {
+  const { user } = useAuth();
   const [view, setView] = useState<ViewState>('landing');
   const [sessions, setSessions] = useState<SessionData[]>([]);
   const [currentSession, setCurrentSession] = useState<SessionData | null>(null);
@@ -17,17 +19,29 @@ function App() {
   const [savedSessions, setSavedSessions] = useState<SessionSummary[]>([]);
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
 
-  // Load saved session list on mount
+  // Load saved session list on mount and when user changes
   useEffect(() => {
-    listSessions().then(setSavedSessions);
-  }, []);
+    listSessions(user?.id).then(setSavedSessions);
+  }, [user?.id]);
 
   const handleSessionLoaded = async (data: SessionData) => {
-    const id = await saveSession(data);
+    const id = await saveSession(data, user?.id);
     data.id = id;
     setSessions(prev => [...prev, data]);
     setView('list');
-    listSessions().then(setSavedSessions);
+    listSessions(user?.id).then(setSavedSessions);
+  };
+
+  const handleBatchLoaded = async (batchSessions: SessionData[]) => {
+    const saved: SessionData[] = [];
+    for (const data of batchSessions) {
+      const id = await saveSession(data, user?.id);
+      data.id = id;
+      saved.push(data);
+    }
+    setSessions(prev => [...prev, ...saved]);
+    setView('list');
+    listSessions(user?.id).then(setSavedSessions);
   };
 
   const handleSessionSelect = (data: SessionData) => {
@@ -42,7 +56,7 @@ function App() {
 
     // Also remove from IndexedDB if it has an id
     if (session?.id) {
-      deleteSession(session.id).then(() => listSessions().then(setSavedSessions));
+      deleteSession(session.id).then(() => listSessions(user?.id).then(setSavedSessions));
     }
 
     setSessions(prev => prev.filter((_, i) => i !== index));
@@ -96,7 +110,7 @@ function App() {
       setCurrentSession(null);
       setView('list');
     }
-    setSavedSessions(await listSessions());
+    setSavedSessions(await listSessions(user?.id));
   };
 
   return (
@@ -120,12 +134,14 @@ function App() {
           onSavedSessionSelect={handleSavedSessionSelect}
           onSavedSessionDelete={handleSavedSessionDelete}
           onPairSelect={handlePairSelect}
+          onBack={() => setView('landing')}
         />
       )}
 
       {view === 'upload' && (
         <FileUpload
           onDataLoaded={handleSessionLoaded}
+          onBatchLoaded={handleBatchLoaded}
           onCancel={() => setView(sessions.length || savedSessions.length ? 'list' : 'landing')}
         />
       )}

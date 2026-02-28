@@ -54,7 +54,9 @@ export const useAnalysisState = (data: SessionData, externalRefLap?: Lap | null)
 
             let startDist = startPoint?.distance ?? 0;
 
-            // For the first corner, extend backwards to include the top speed zone
+            // For the first corner, extend backwards to include the braking zone
+            // but never into the main straight (before 350m)
+            const MIN_FIRST_CORNER_START = 0.350; // km
             if (corner.id === firstCornerId && startPointIdx > 0) {
                 // Find the max speed point before the corner (top of the straight)
                 let maxSpeed = 0;
@@ -75,7 +77,10 @@ export const useAnalysisState = (data: SessionData, externalRefLap?: Lap | null)
                         break;
                     }
                 }
-                startDist = fullAnalysisData[extendedIdx].distance;
+                startDist = Math.max(
+                    fullAnalysisData[extendedIdx].distance,
+                    MIN_FIRST_CORNER_START,
+                );
             }
 
             return {
@@ -93,10 +98,7 @@ export const useAnalysisState = (data: SessionData, externalRefLap?: Lap | null)
         for (let i = 0; i < ranges.length - 1; i++) {
             ranges[i].endDist = ranges[i + 1].startDist;
         }
-        // Last corner extends to end of data
-        if (ranges.length > 0 && fullAnalysisData.length > 0) {
-            ranges[ranges.length - 1].endDist = fullAnalysisData[fullAnalysisData.length - 1].distance;
-        }
+        // Last corner: keep its natural detected end (don't extend into the main straight)
 
         return ranges;
     }, [data.laps, refLapIndex, fullAnalysisData, externalRefLap]);

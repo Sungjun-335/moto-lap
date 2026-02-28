@@ -3,9 +3,10 @@ import type { SessionData, Corner, Lap } from '../types';
 import SummaryCards from './SummaryCards';
 import Chart from './Chart';
 import MapComponent from './Map';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Trophy } from 'lucide-react';
 import { haversineDistance } from '../utils/trackMatcher';
 import { useTranslation } from '../i18n/context';
+import { formatLapTime } from '../utils/formatLapTime';
 
 interface OverviewProps {
     data: SessionData;
@@ -30,11 +31,27 @@ interface CornerDiff {
     apexDiffM?: number;
 }
 
-const Overview: React.FC<OverviewProps> = ({ data, onCornerNavigate, selectedLapIndex, anaLapIdx, refLapIdx, externalRefLap }) => {
+const Overview: React.FC<OverviewProps> = ({ data, onCornerNavigate, selectedLapIndex, anaLapIdx, refLapIdx, externalRefLap, outlierLapIndices }) => {
     const { t } = useTranslation();
 
     // The ref lap used for corner diffs: external if loaded, otherwise from current session
     const refLap = externalRefLap ?? data.laps.find(l => l.index === refLapIdx) ?? null;
+
+    // Best lap and lap time comparison
+    const { bestLap, lapComparisons } = useMemo(() => {
+        if (!data.laps.length) return { bestLap: null, lapComparisons: [] };
+        const sorted = [...data.laps].sort((a, b) => a.duration - b.duration);
+        const best = sorted[0];
+        const comparisons = sorted.map(lap => ({
+            index: lap.index,
+            duration: lap.duration,
+            diff: lap.duration - best.duration,
+            isBest: lap.index === best.index,
+            isOutlier: outlierLapIndices.has(lap.index),
+            maxSpeed: Math.max(...lap.dataPoints.map(p => p.speed)),
+        }));
+        return { bestLap: best, lapComparisons: comparisons };
+    }, [data.laps, outlierLapIndices]);
 
     const displayData = useMemo(() => {
         if (selectedLapIndex === 'all') {
@@ -95,6 +112,48 @@ const Overview: React.FC<OverviewProps> = ({ data, onCornerNavigate, selectedLap
                 <div className="mb-4">
                     <SummaryCards data={displayData} />
                 </div>
+
+                {/* Best Lap Comparison */}
+                {bestLap && lapComparisons.length > 1 && (
+                    <div className="mt-4 bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                            <Trophy size={14} className="text-yellow-500" />
+                            <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider">
+                                {t.sessions.bestLap}: {formatLapTime(bestLap.duration)}
+                            </h3>
+                        </div>
+                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-2">
+                            {lapComparisons.map(lc => (
+                                <div
+                                    key={lc.index}
+                                    className={`rounded-lg border p-2.5 text-center ${
+                                        lc.isBest
+                                            ? 'bg-yellow-900/20 border-yellow-700/50'
+                                            : lc.isOutlier
+                                            ? 'bg-zinc-800/30 border-zinc-700/30 opacity-50'
+                                            : 'bg-zinc-800/50 border-zinc-700/50'
+                                    }`}
+                                >
+                                    <div className="text-xs font-mono font-bold text-zinc-300 mb-1">
+                                        {lc.isBest && <Trophy size={10} className="inline mr-1 text-yellow-500" />}
+                                        L{lc.index}
+                                    </div>
+                                    <div className="text-sm font-mono text-zinc-200">
+                                        {formatLapTime(lc.duration)}
+                                    </div>
+                                    <div className={`text-xs font-mono mt-1 ${
+                                        lc.isBest ? 'text-yellow-500' : lc.diff < 0.5 ? 'text-green-400' : lc.diff < 1.0 ? 'text-zinc-400' : 'text-red-400'
+                                    }`}>
+                                        {lc.isBest ? 'BEST' : `+${lc.diff.toFixed(3)}`}
+                                    </div>
+                                    <div className="text-[10px] text-zinc-500 mt-0.5">
+                                        {lc.maxSpeed.toFixed(0)} km/h
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* Corner Time Comparison */}
                 {data.laps.some(l => l.corners && l.corners.length > 0) && (

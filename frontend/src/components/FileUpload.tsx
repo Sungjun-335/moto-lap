@@ -10,6 +10,7 @@ import { formatLapTime } from '../utils/formatLapTime';
 
 interface FileUploadProps {
     onDataLoaded: (data: SessionData) => void;
+    onBatchLoaded?: (sessions: SessionData[]) => void;
     onCancel?: () => void;
 }
 
@@ -115,7 +116,15 @@ const LapMiniMap: React.FC<{ dataPoints: LapData[] }> = ({ dataPoints }) => {
     return <canvas ref={canvasRef} className="w-full h-full" />;
 };
 
-const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onCancel }) => {
+interface BatchProgress {
+    current: number;
+    total: number;
+    currentFile: string;
+    errors: { name: string; error: string }[];
+    completed: number;
+}
+
+const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, onCancel }) => {
     const { t } = useTranslation();
     const [isDragging, setIsDragging] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -132,9 +141,13 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onCancel }) => {
     const [matchedTrack, setMatchedTrack] = useState<Track | null>(null);
 
     const [bikeModel, setBikeModel] = useState('');
+    const [riderName, setRiderName] = useState('');
     const [condition, setCondition] = useState<'dry' | 'wet'>('dry');
     const [sessionType, setSessionType] = useState<'practice' | 'race' | 'warmup' | 'trackday'>('practice');
     const [eventName, setEventName] = useState('');
+    const [fileName, setFileName] = useState('');
+
+    const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
 
     const processFile = async (file: File, mapping?: Record<string, string>) => {
         setError(null);
@@ -156,6 +169,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onCancel }) => {
 
             setParsedData(data);
             setFileToUpload(file);
+            setFileName(file.name);
             setSelectedLapIndices(new Set(data.laps.map(l => l.index)));
             setBikeModel(data.metadata.vehicle || '');
         } catch (err: any) {
@@ -189,6 +203,52 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onCancel }) => {
         }
     };
 
+    const processBatch = async (files: File[]) => {
+        const total = files.length;
+        const sessions: SessionData[] = [];
+        const errors: { name: string; error: string }[] = [];
+
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            setBatchProgress({ current: i + 1, total, currentFile: file.name, errors, completed: sessions.length });
+
+            try {
+                const data = await parseAimCsv(file);
+
+                const track = matchTrack(data.dataPoints);
+                if (track) {
+                    data.metadata.trackId = track.id;
+                }
+
+                const sampleRate = data.laps[0]?.dataPoints.length > 1
+                    ? Math.round(1 / (data.laps[0].dataPoints[1].time - data.laps[0].dataPoints[0].time))
+                    : 20;
+
+                const lapsWithCorners = detectCornersForSession(data.laps, sampleRate, track ?? undefined);
+
+                const lapsWithMetrics = lapsWithCorners.map(lap => ({
+                    ...lap,
+                    metrics: computeLapMetrics(lap.dataPoints, lap.index, sampleRate),
+                }));
+
+                data.metadata.fileName = file.name;
+                sessions.push({ ...data, laps: lapsWithMetrics });
+            } catch (err: any) {
+                console.error(`[FileUpload] Batch: failed to process ${file.name}:`, err);
+                errors.push({ name: file.name, error: err.message || 'Parse error' });
+            }
+        }
+
+        setBatchProgress({ current: total, total, currentFile: '', errors, completed: sessions.length });
+
+        if (sessions.length > 0 && onBatchLoaded) {
+            onBatchLoaded(sessions);
+        }
+
+        // Keep batch progress visible briefly so user sees the result
+        setTimeout(() => setBatchProgress(null), 2000);
+    };
+
     const handleConfirmSelection = async () => {
         if (!parsedData) return;
 
@@ -219,6 +279,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onCancel }) => {
                 metadata: {
                     ...parsedData.metadata,
                     bikeModel: bikeModel || undefined,
+                    riderName: riderName || undefined,
+                    fileName: fileName || undefined,
                     condition,
                     sessionType,
                     eventName: sessionType === 'race' && eventName ? eventName : undefined,
@@ -237,6 +299,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onCancel }) => {
                 metadata: {
                     ...parsedData.metadata,
                     bikeModel: bikeModel || undefined,
+                    riderName: riderName || undefined,
+                    fileName: fileName || undefined,
                     condition,
                     sessionType,
                     eventName: sessionType === 'race' && eventName ? eventName : undefined,
@@ -268,13 +332,15 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onCancel }) => {
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         setIsDragging(false);
-        const file = e.dataTransfer.files[0];
-        if (file) {
-            if (file.name.endsWith('.csv') || file.type === 'text/csv') {
-                processFile(file);
-            } else {
-                setError(t.upload.pleaseUploadCsv);
-            }
+        const allFiles = Array.from(e.dataTransfer.files);
+        const csvFiles = allFiles.filter(f => f.name.endsWith('.csv') || f.type === 'text/csv');
+
+        if (csvFiles.length === 0) {
+            setError(t.upload.pleaseUploadCsv);
+        } else if (csvFiles.length === 1) {
+            processFile(csvFiles[0]);
+        } else {
+            processBatch(csvFiles);
         }
     }, []);
 
@@ -289,11 +355,72 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onCancel }) => {
     }, []);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) processFile(file);
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+        if (files.length === 1) {
+            processFile(files[0]);
+        } else {
+            const csvFiles = Array.from(files).filter(f => f.name.endsWith('.csv') || f.type === 'text/csv');
+            if (csvFiles.length > 0) processBatch(csvFiles);
+        }
     };
 
     // --- RENDER ---
+
+    // 0. Batch Processing Progress
+    if (batchProgress) {
+        const pct = Math.round((batchProgress.current / batchProgress.total) * 100);
+        const isDone = batchProgress.current === batchProgress.total && batchProgress.currentFile === '';
+
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] p-4">
+                <div className="w-full max-w-md bg-zinc-900 border border-zinc-700 rounded-2xl p-8 shadow-2xl">
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="p-3 bg-blue-500/20 rounded-full">
+                            <Upload className="w-8 h-8 text-blue-400" />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-bold text-white">
+                                {isDone
+                                    ? t.upload.batchComplete.replace('{success}', String(batchProgress.completed))
+                                    : t.upload.batchProcessing
+                                        .replace('{current}', String(batchProgress.current))
+                                        .replace('{total}', String(batchProgress.total))
+                                }
+                            </h2>
+                            {!isDone && (
+                                <p className="text-zinc-400 text-sm truncate max-w-[300px]">
+                                    {batchProgress.currentFile}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Progress bar */}
+                    <div className="w-full bg-zinc-800 rounded-full h-2 mb-4">
+                        <div
+                            className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${pct}%` }}
+                        />
+                    </div>
+
+                    {/* Error list */}
+                    {batchProgress.errors.length > 0 && (
+                        <div className="mt-4 space-y-1">
+                            <p className="text-red-400 text-sm font-medium">
+                                {t.upload.batchFailed.replace('{count}', String(batchProgress.errors.length))}
+                            </p>
+                            {batchProgress.errors.map((e, i) => (
+                                <p key={i} className="text-zinc-500 text-xs truncate">
+                                    {t.upload.batchSkipped.replace('{name}', e.name).replace('{error}', e.error)}
+                                </p>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
 
     // 1. Missing Column Mapping Modal
     if (missingColumns.length > 0) {
@@ -406,6 +533,18 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onCancel }) => {
                 {/* Session Info Form */}
                 <div className="mb-6 p-4 bg-zinc-800/50 rounded-xl border border-zinc-700/50">
                     <div className="flex flex-wrap items-end gap-4">
+                        {/* Rider Name */}
+                        <div className="flex flex-col gap-1 min-w-[140px] flex-1">
+                            <label className="text-xs text-zinc-500">{t.upload.riderName}</label>
+                            <input
+                                type="text"
+                                value={riderName}
+                                onChange={e => setRiderName(e.target.value)}
+                                placeholder={t.upload.riderNamePlaceholder}
+                                className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-white placeholder-zinc-600 focus:border-blue-500 focus:outline-none"
+                            />
+                        </div>
+
                         {/* Bike Model */}
                         <div className="flex flex-col gap-1 min-w-[180px] flex-1">
                             <label className="text-xs text-zinc-500">{t.upload.bikeModel}</label>
@@ -596,8 +735,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onCancel }) => {
                         type="file"
                         className="hidden"
                         accept=".csv"
+                        multiple
                         onChange={handleChange}
-                        disabled={loading}
+                        disabled={loading || batchProgress !== null}
                     />
                 </label>
 

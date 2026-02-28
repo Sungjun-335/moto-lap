@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useTranslation } from '../i18n/context';
 import { LanguageToggle } from '../i18n/context';
+import UserMenu from './UserMenu';
 
 interface LandingProps {
   onStart: () => void;
@@ -88,6 +89,7 @@ const Landing: React.FC<LandingProps> = ({ onStart, onSeeSessions, savedSessionC
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <UserMenu />
             <LanguageToggle />
             {savedSessionCount > 0 && (
               <button
@@ -140,13 +142,6 @@ const Landing: React.FC<LandingProps> = ({ onStart, onSeeSessions, savedSessionC
                   {t.landing.mySessions} ({savedSessionCount})
                 </button>
               )}
-              <button
-                onClick={onSeeSessions}
-                className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-5 py-3 text-sm text-zinc-200 transition hover:border-white/30 hover:bg-white/5"
-              >
-                {t.landing.tryDemo}
-                <ArrowRight className="h-4 w-4" />
-              </button>
             </div>
             <p className="text-sm text-zinc-400">
               {t.landing.noSignup}
@@ -299,13 +294,6 @@ const Landing: React.FC<LandingProps> = ({ onStart, onSeeSessions, savedSessionC
                 >
                   {t.landing.uploadCsv}
                   <FileUp className="h-5 w-5 transition group-hover:translate-y-[-2px]" />
-                </button>
-                <button
-                  onClick={onSeeSessions}
-                  className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/5 px-8 py-4 text-base text-zinc-200 transition hover:border-white/40 hover:bg-white/10"
-                >
-                  {t.landing.tryDemo}
-                  <ArrowRight className="h-5 w-5" />
                 </button>
               </div>
             </div>

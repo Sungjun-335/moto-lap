@@ -32,6 +32,7 @@ VITE_API_URL=http://localhost:8787
 VITE_CORNER_API_URL=<lambda-url>
 VITE_GOOGLE_MAPS_API_KEY=<google-maps-key>
 VITE_GEMINI_API_KEY=<gemini-key>
+VITE_GOOGLE_CLIENT_ID=<google-oauth-client-id>
 ```
 
 **Backend** (`backend/.dev.vars`):
@@ -39,6 +40,9 @@ VITE_GEMINI_API_KEY=<gemini-key>
 GEMINI_API_KEY=<gemini-key>
 LAMBDA_URL=<lambda-url>
 LAMBDA_TOKEN=<lambda-token>
+JWT_SECRET=<jwt-signing-secret>
+GOOGLE_CLIENT_ID=<google-oauth-client-id>
+FRONTEND_URL=<frontend-origin-for-cors>
 ```
 
 ## Architecture
@@ -52,7 +56,7 @@ LAMBDA_TOKEN=<lambda-token>
 
 ### Frontend Architecture
 
-**No router, no Redux.** View state is a simple state machine in `App.tsx`: `'landing' | 'list' | 'upload' | 'analysis'`. All session state lives in App-level `useState`.
+**No router, no Redux.** View state is a simple state machine in `App.tsx`: `'landing' | 'list' | 'upload' | 'analysis'`. All session state lives in App-level `useState`. Google OAuth authentication via `AuthContext` wraps the app; `useAuth()` provides user info for user-scoped session storage.
 
 **Data flow:**
 1. CSV upload → `aimParser.ts` (parse + metadata extraction) → `cornerDetection.ts` (client-side) → `SessionData`
@@ -61,7 +65,9 @@ LAMBDA_TOKEN=<lambda-token>
 4. All chart state managed by `useAnalysisState` hook — lap selection, zoom/brush, hover, playback, corner ranges
 5. Sessions can be loaded from IndexedDB via `sessionReconstruct.ts` (re-runs lap segmentation, corner detection, metrics)
 
-**Chart system uses a registry pattern:** `chartRegistry.ts` declares all charts with `defaultVisible`. Two types: dedicated components (DeltaChart, ThrottleBrakeChart, etc.) and `FlexibleLineChart` for simple metrics. `AnalysisChartWrapper` provides common features (corner range overlays, drag state, zoom sync). All time-series charts use `YAxis width={40}` and `margin={{ top: 5, right: 30, left: -20, bottom: 0 }}` for X-axis alignment.
+**Chart system uses a registry pattern:** `chartRegistry.ts` declares all charts with `defaultVisible`. Two types: dedicated components (DeltaChart, ThrottleBrakeChart, etc.) and `FlexibleLineChart` for simple metrics. `AnalysisChartWrapper` provides common features (corner range overlays, drag state, zoom sync, double-click expand to modal). All time-series charts use `YAxis width={40}` and `margin={{ top: 5, right: 30, left: -20, bottom: 0 }}` for X-axis alignment.
+
+**Key point labels:** `keyPoints.ts` provides a pipeline: `findCornerKeyPoints()` (per-corner max/min) or `findKeyPoints()` (prominence-based) -> `adjustKeyPointsForLines()` (avoid line overlap using other lines' Y values) -> `resolveKeyPointPositions()` (prevent nearby label collision).
 
 **I18n:** `frontend/src/i18n/` with `context.tsx` (locale provider), `types.ts` (translation keys), `ko.ts`/`en.ts`. Locale toggle: `'en' | 'ko'`. All UI strings go through `useTranslation()` hook.
 
@@ -96,13 +102,19 @@ LAMBDA_TOKEN=<lambda-token>
 | `frontend/src/utils/formulaMetrics.ts` | Client-side boolean channels + lap metrics computation |
 | `frontend/src/utils/lapFilter.ts` | `getOutlierLapIndices()` (>10% from avg), `pickBestLap()` |
 | `frontend/src/utils/trackMatcher.ts` | GPS-based track identification against known tracks DB |
+| `frontend/src/utils/keyPoints.ts` | Key point detection + label positioning pipeline |
+| `frontend/src/utils/smoothing.ts` | Gaussian smoothing for G-force and Gyro (PRY) fields |
+| `frontend/src/utils/apiClient.ts` | JWT Bearer token management for authenticated API calls |
+| `frontend/src/auth/AuthContext.tsx` | Google OAuth context (GSI integration, JWT token exchange) |
+| `frontend/src/components/UserMenu.tsx` | User profile menu (login/logout) |
 | `frontend/src/components/Analysis/useAnalysisState.ts` | Central analysis state hook (lap selection, zoom, playback, hover) |
 | `frontend/src/components/Analysis/chartRegistry.ts` | Chart configuration registry with `defaultVisible` flag |
 | `frontend/src/components/Analysis/AnalysisChartWrapper.tsx` | Shared chart wrapper (corner ranges, interactions) |
 | `frontend/src/components/Analysis/AnalysisDashboard.tsx` | Main analysis view (map, G circle, charts, activity panel) |
 | `frontend/src/components/Analysis/ReferenceSelector.tsx` | REF lap source: current session / saved session / CSV upload |
-| `backend/src/entry.py` | Worker entry point — CORS proxy to Lambda, D1 integration, Gemini reports |
-| `backend/schema.sql` | D1 schema: Sessions, Corners (driving_json), LapMetrics |
+| `backend/src/entry.py` | Worker entry point — CORS proxy to Lambda, D1 integration, Gemini reports, JWT auth |
+| `backend/schema.sql` | D1 schema: Users, Sessions, Corners (driving_json), LapMetrics |
+| `backend/migrations/002_add_users.sql` | D1 migration: add Users table |
 
 ### Formula Metrics Pipeline
 
@@ -154,6 +166,8 @@ preprocess.apply(df)
 ```
 
 **DB 테이블:**
+- `Users` — Google OAuth 사용자 (google_id, email, name, picture_url)
+- `Sessions` — user_id FK로 Users 연결
 - `LapMetrics` — 랩별 BRK/CRN/TPS/CST 시간·비율·거리 + max_lean + g_sum
 - `Corners.driving_json` — driving dict 전체 JSON 저장
 
@@ -174,5 +188,29 @@ Cloudflare stack: Workers + Assets (frontend SPA), Workers Python (backend), D1 
 
 - `deploy.yml` — Frontend build + Backend deploy (Cloudflare)
 - `deploy-lambda.yml` — Lambda function deploy (AWS)
-- Required secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, AWS credentials
-- Required variables: `VITE_API_URL`, `VITE_GOOGLE_MAPS_API_KEY`
+- Required secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, AWS credentials, `JWT_SECRET`, `GOOGLE_CLIENT_ID`
+- Required variables: `VITE_API_URL`, `VITE_GOOGLE_MAPS_API_KEY`, `VITE_GOOGLE_CLIENT_ID`
+
+### Authentication
+
+Google Sign-In (GSI) flow:
+1. Frontend loads GSI script, renders Google Sign-In button via `AuthContext`
+2. On sign-in, frontend receives Google `id_token` and POSTs to `/api/auth/google/token`
+3. Backend verifies `id_token` via Google's `tokeninfo` endpoint, upserts user in D1 `Users` table
+4. Backend creates HS256 JWT (7-day expiry) and returns it
+5. Frontend stores JWT in localStorage (`motolap-auth-token`) via `apiClient.ts`
+6. All subsequent API calls include `Authorization: Bearer <jwt>` header
+7. `sessionStorage.ts` supports user-scoped session listing via `user_id`
+
+## Progress Log
+
+### 2026-03-01
+- Chart double-click expand modal (AnalysisDashboard + AnalysisChartWrapper)
+- Key point label auto-positioning pipeline (adjustKeyPointsForLines, resolveKeyPointPositions)
+- Google OAuth authentication (AuthContext, UserMenu, apiClient, backend JWT)
+- Gyro (PRY) smoothing toggle + driving event markers global toggle
+- Batch CSV upload support (FileUpload + App)
+- SessionList grouped by venue/rider/bike + back button
+- Overview best lap comparison grid
+- Chart.tsx lap hover highlight + max/min speed labels
+- AI Report prompt improvements (curves data, G-Sum explanation, distance-based coaching)

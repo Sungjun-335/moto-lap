@@ -9,8 +9,12 @@ account_id = "979c4739d0e0ec53a3eb20186862ec6c"
 LAMBDA_URL = ""
 # Optional bearer token for Lambda auth
 LAMBDA_TOKEN = ""
+# Frontend URL for OAuth redirects and CORS
+FRONTEND_URL = "http://localhost:5173"
 # Gemini API key for AI report generation (set via .dev.vars locally, secrets in prod)
 # GEMINI_API_KEY = "" — do NOT put real keys here; use `wrangler secret put GEMINI_API_KEY`
+# OAuth secrets — set via `wrangler secret put`:
+# GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET
 
 [[d1_databases]]
 binding = "DB"

@@ -3,8 +3,70 @@ from __future__ import annotations
 from js import Headers, Response, fetch
 import json
 import os
-from typing import Any, Dict, List
+import hmac
+import hashlib
+import base64
+import time
+from typing import Any, Dict, List, Optional
+from urllib.parse import unquote
 
+
+# ─── JWT Helpers (HS256, stdlib only) ───
+
+def _b64url_encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def _b64url_decode(s: str) -> bytes:
+    padding = 4 - len(s) % 4
+    if padding != 4:
+        s += "=" * padding
+    return base64.urlsafe_b64decode(s)
+
+
+def _create_jwt(payload: dict, secret: str, exp_seconds: int = 7 * 24 * 3600) -> str:
+    header = {"alg": "HS256", "typ": "JWT"}
+    payload = {**payload, "iat": int(time.time()), "exp": int(time.time()) + exp_seconds}
+    segments = [
+        _b64url_encode(json.dumps(header).encode()),
+        _b64url_encode(json.dumps(payload).encode()),
+    ]
+    signing_input = ".".join(segments).encode()
+    signature = hmac.new(secret.encode(), signing_input, hashlib.sha256).digest()
+    segments.append(_b64url_encode(signature))
+    return ".".join(segments)
+
+
+def _verify_jwt(token: str, secret: str) -> Optional[dict]:
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            return None
+        signing_input = f"{parts[0]}.{parts[1]}".encode()
+        expected_sig = hmac.new(secret.encode(), signing_input, hashlib.sha256).digest()
+        actual_sig = _b64url_decode(parts[2])
+        if not hmac.compare_digest(expected_sig, actual_sig):
+            return None
+        payload = json.loads(_b64url_decode(parts[1]))
+        if payload.get("exp", 0) < time.time():
+            return None
+        return payload
+    except Exception:
+        return None
+
+
+async def _get_user_from_request(request, env) -> Optional[dict]:
+    jwt_secret = _get_env_value(env, "JWT_SECRET")
+    if not jwt_secret:
+        return None
+    auth_header = request.headers.get("Authorization") or ""
+    if not auth_header.startswith("Bearer "):
+        return None
+    token = auth_header[7:]
+    return _verify_jwt(token, jwt_secret)
+
+
+# ─── Existing Helpers ───
 
 def _flatten_driving(driving: dict) -> dict:
     """Flatten nested driving features dict into a single-level dict for CSV export."""
@@ -58,6 +120,34 @@ def _get_env_value(env: Any, key: str) -> str | None:
     if value:
         return str(value)
     return os.getenv(key)
+
+
+def _parse_query_params(url: str) -> Dict[str, str]:
+    query_str = url.split("?", 1)[1] if "?" in url else ""
+    params: Dict[str, str] = {}
+    for pair in query_str.split("&"):
+        if "=" in pair:
+            k, v = pair.split("=", 1)
+            params[unquote(k)] = unquote(v)
+    return params
+
+
+def _make_cors_headers(request, env) -> Headers:
+    origin = request.headers.get("Origin") or ""
+    frontend_url = _get_env_value(env, "FRONTEND_URL") or ""
+
+    allowed_origins = {"http://localhost:5173", "http://localhost:4173"}
+    if frontend_url:
+        allowed_origins.add(frontend_url)
+
+    allow_origin = origin if origin in allowed_origins else (frontend_url or "http://localhost:5173")
+
+    return Headers.new([
+        ("Access-Control-Allow-Origin", allow_origin),
+        ("Access-Control-Allow-Methods", "GET, POST, OPTIONS"),
+        ("Access-Control-Allow-Headers", "Content-Type, Authorization"),
+        ("Access-Control-Allow-Credentials", "true"),
+    ])
 
 
 async def _call_gemini(prompt: str, env: Any) -> str:
@@ -126,30 +216,135 @@ async def _call_lambda(csv_bytes: bytes, env: Any) -> Dict[str, Any]:
     return await response.json()
 
 
+# ─── Auth Handlers ───
+
+async def _handle_auth_google_token(request, env, headers):
+    """Verify Google id_token and return our JWT. Uses GET to Google's tokeninfo (no outbound POST)."""
+    jwt_secret = _get_env_value(env, "JWT_SECRET")
+    client_id = _get_env_value(env, "GOOGLE_CLIENT_ID")
+    if not jwt_secret or not client_id:
+        return Response.new(json.dumps({"error": "Auth not configured"}), headers=headers, status=500)
+
+    content_bytes = await request.bytes()
+    body = json.loads(bytes(content_bytes).decode("utf-8"))
+    id_token = body.get("id_token")
+    if not id_token:
+        return Response.new(json.dumps({"error": "Missing id_token"}), headers=headers, status=400)
+
+    # Verify id_token via Google's tokeninfo endpoint (GET request)
+    verify_resp = await fetch(f"https://oauth2.googleapis.com/tokeninfo?id_token={id_token}")
+    if not verify_resp.ok:
+        return Response.new(json.dumps({"error": "Invalid id_token"}), headers=headers, status=401)
+
+    # verify_resp.json() returns JsProxy — parse text instead
+    token_text = await verify_resp.text()
+    token_dict = json.loads(str(token_text))
+
+    # Verify audience matches our client ID
+    aud = str(token_dict.get("aud", ""))
+    if aud != client_id:
+        return Response.new(json.dumps({"error": "Token audience mismatch"}), headers=headers, status=401)
+
+    google_id = str(token_dict.get("sub", ""))
+    email = str(token_dict.get("email", ""))
+    name = str(token_dict.get("name", ""))
+    picture = str(token_dict.get("picture", ""))
+
+    if not google_id or not email:
+        return Response.new(json.dumps({"error": "Invalid token info"}), headers=headers, status=401)
+
+    # Upsert user in D1
+    existing = await env.DB.prepare("SELECT id FROM Users WHERE google_id = ?").bind(google_id).first()
+    if existing:
+        user_id = existing.id
+        await env.DB.prepare(
+            "UPDATE Users SET email = ?, name = ?, picture_url = ? WHERE id = ?"
+        ).bind(email, name, picture, user_id).run()
+    else:
+        res = await env.DB.prepare(
+            "INSERT INTO Users (google_id, email, name, picture_url) VALUES (?, ?, ?, ?)"
+        ).bind(google_id, email, name, picture).run()
+        user_id = res.meta.last_row_id
+
+    # Create JWT
+    jwt_token = _create_jwt({
+        "sub": str(user_id),
+        "email": email,
+        "name": name,
+        "picture": picture,
+    }, jwt_secret)
+
+    return Response.new(json.dumps({
+        "token": jwt_token,
+        "user": {"id": str(user_id), "email": email, "name": name, "picture": picture},
+    }), headers=headers)
+
+
+async def _handle_auth_me(request, env, headers):
+    user = await _get_user_from_request(request, env)
+    if not user:
+        return Response.new(json.dumps({"error": "Unauthorized"}), headers=headers, status=401)
+
+    return Response.new(json.dumps({
+        "id": user.get("sub"),
+        "email": user.get("email"),
+        "name": user.get("name"),
+        "picture": user.get("picture"),
+    }), headers=headers)
+
+
+async def _handle_get_sessions(request, env, headers):
+    user = await _get_user_from_request(request, env)
+    if not user:
+        return Response.new(json.dumps({"error": "Unauthorized"}), headers=headers, status=401)
+
+    user_id = int(user["sub"])
+    result = await env.DB.prepare(
+        "SELECT id, created_at, venue, vehicle FROM Sessions WHERE user_id = ? ORDER BY created_at DESC"
+    ).bind(user_id).all()
+
+    sessions = []
+    for row in result.results:
+        sessions.append({
+            "id": row.id,
+            "created_at": row.created_at,
+            "venue": row.venue,
+            "vehicle": row.vehicle,
+        })
+
+    return Response.new(json.dumps({"sessions": sessions}), headers=headers)
+
+
+# ─── Main Handler ───
+
 async def on_fetch(request, env):
-    headers = Headers.new(
-        [
-            ("Access-Control-Allow-Origin", "*"),
-            ("Access-Control-Allow-Methods", "GET, POST, OPTIONS"),
-            ("Access-Control-Allow-Headers", "*"),
-        ]
-    )
+    headers = _make_cors_headers(request, env)
 
     if request.method == "OPTIONS":
         return Response.new("", headers=headers)
 
     url = request.url
 
+    # --- Auth routes ---
+    if request.method == "POST" and "/api/auth/google-token" in url:
+        try:
+            return await _handle_auth_google_token(request, env, headers)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response.new(json.dumps({"error": str(e)}), headers=headers, status=500)
+
+    if request.method == "GET" and "/api/auth/me" in url:
+        return await _handle_auth_me(request, env, headers)
+
+    # --- Session list (authenticated) ---
+    if request.method == "GET" and "/api/sessions" in url:
+        return await _handle_get_sessions(request, env, headers)
+
     # --- Training data export ---
     if request.method == "GET" and "/api/training-data" in url:
         try:
-            # Parse query params
-            query_str = url.split("?", 1)[1] if "?" in url else ""
-            params: Dict[str, str] = {}
-            for pair in query_str.split("&"):
-                if "=" in pair:
-                    k, v = pair.split("=", 1)
-                    params[k] = v
+            params = _parse_query_params(url)
 
             fmt = params.get("format", "json")
             venue_filter = params.get("venue", "")
@@ -252,29 +447,24 @@ async def on_fetch(request, env):
         try:
             content_bytes = await request.bytes()
 
-            print("DEBUG: Decoding CSV...")
             data_bytes = bytes(content_bytes)
             try:
                 csv_str = data_bytes.decode("utf-8")
             except UnicodeDecodeError:
-                print("DEBUG: UTF-8 decode failed, trying cp1252...")
                 csv_str = data_bytes.decode("cp1252")
 
             metadata = _parse_aim_metadata(csv_str)
 
-            print("DEBUG: Sending CSV to Lambda...")
             result = await _call_lambda(data_bytes, env)
             if not isinstance(result, dict):
                 return Response.new(json.dumps({"error": "Invalid Lambda response"}), headers=headers, status=502)
             if "error" in result:
-                print(f"DEBUG: Lambda error: {result['error']}")
                 return Response.new(json.dumps({"error": result["error"]}), headers=headers, status=400)
 
             corners = result.get("corners")
             if corners is None:
                 return Response.new(json.dumps({"error": "Lambda response missing corners"}), headers=headers, status=502)
 
-            print(f"DEBUG: Found {len(corners)} corners. Saving to D1...")
 
             import datetime
 
@@ -283,9 +473,13 @@ async def on_fetch(request, env):
             venue = str(lambda_metadata.get("Venue", metadata.get("Venue", "Unknown")))
             vehicle = str(lambda_metadata.get("Vehicle", metadata.get("Vehicle", "Unknown")))
 
-            res = await env.DB.prepare("INSERT INTO Sessions (created_at, venue, vehicle) VALUES (?, ?, ?)").bind(
-                now, venue, vehicle
-            ).run()
+            # Extract user_id from JWT if authenticated
+            user = await _get_user_from_request(request, env)
+            user_id = int(user["sub"]) if user else None
+
+            res = await env.DB.prepare(
+                "INSERT INTO Sessions (created_at, venue, vehicle, user_id) VALUES (?, ?, ?, ?)"
+            ).bind(now, venue, vehicle, user_id).run()
             session_id = res.meta.last_row_id
 
             stmt = env.DB.prepare(
@@ -349,7 +543,6 @@ async def on_fetch(request, env):
         except Exception as e:
             import traceback
 
-            print(f"DEBUG: Exception in POST: {e}")
             traceback.print_exc()
             return Response.new(json.dumps({"error": str(e)}), headers=headers, status=500)
 

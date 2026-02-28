@@ -44,29 +44,42 @@ function smoothArray(values: number[], kernel: number[]): number[] {
 }
 
 const G_FIELDS = ['anaLatG', 'refLatG', 'anaLonG', 'refLonG'] as const;
+const GYRO_FIELDS = ['anaGyroX', 'refGyroX', 'anaGyroY', 'refGyroY', 'anaGyroZ', 'refGyroZ'] as const;
+
+/**
+ * Generic Gaussian smoothing for specified fields in AnalysisPoint[].
+ */
+function smoothFields(data: AnalysisPoint[], fields: readonly string[], windowSize: number): AnalysisPoint[] {
+    if (data.length < windowSize) return data;
+
+    const kernel = gaussianKernel(windowSize);
+
+    const smoothed: Record<string, number[]> = {};
+    for (const field of fields) {
+        const raw = data.map(p => p[field as keyof AnalysisPoint] as number);
+        smoothed[field] = smoothArray(raw, kernel);
+    }
+
+    return data.map((p, i) => {
+        const updated: Record<string, number> = {};
+        for (const field of fields) {
+            updated[field] = smoothed[field][i];
+        }
+        return { ...p, ...updated };
+    });
+}
 
 /**
  * Apply Gaussian smoothing to G-force fields in AnalysisPoint[].
  * Window size 15 ≈ moderate smoothing for typical 10-20Hz data.
  */
 export function smoothGData(data: AnalysisPoint[], windowSize = 15): AnalysisPoint[] {
-    if (data.length < windowSize) return data;
+    return smoothFields(data, G_FIELDS, windowSize);
+}
 
-    const kernel = gaussianKernel(windowSize);
-
-    // Extract and smooth each G field
-    const smoothed: Record<string, number[]> = {};
-    for (const field of G_FIELDS) {
-        const raw = data.map(p => p[field] as number);
-        smoothed[field] = smoothArray(raw, kernel);
-    }
-
-    // Return new array with smoothed G values
-    return data.map((p, i) => ({
-        ...p,
-        anaLatG: smoothed.anaLatG[i],
-        refLatG: smoothed.refLatG[i],
-        anaLonG: smoothed.anaLonG[i],
-        refLonG: smoothed.refLonG[i],
-    }));
+/**
+ * Apply Gaussian smoothing to Gyro (Pitch/Roll/Yaw) fields in AnalysisPoint[].
+ */
+export function smoothGyroData(data: AnalysisPoint[], windowSize = 15): AnalysisPoint[] {
+    return smoothFields(data, GYRO_FIELDS, windowSize);
 }

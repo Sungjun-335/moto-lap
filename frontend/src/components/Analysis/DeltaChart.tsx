@@ -5,7 +5,7 @@ import {
 import type { AnalysisPoint } from '../../utils/analysis';
 import type { CornerRange } from './AnalysisChartWrapper';
 import { useTranslation } from '../../i18n/context';
-import { findKeyPoints, formatKeyPointValue } from '../../utils/keyPoints';
+import { findKeyPoints, resolveKeyPointPositions, formatKeyPointValue } from '../../utils/keyPoints';
 
 interface DeltaChartProps {
     data: AnalysisPoint[];
@@ -29,7 +29,7 @@ const DeltaChart: React.FC<DeltaChartProps> = ({
     const { t } = useTranslation();
     const keyPoints = useMemo(() => {
         if (data.length < 10) return [];
-        return findKeyPoints(data, 'timeDelta', '#ef4444');
+        return resolveKeyPointPositions(findKeyPoints(data, 'timeDelta', '#ef4444'));
     }, [data]);
 
     return (
@@ -139,7 +139,7 @@ const DeltaChart: React.FC<DeltaChartProps> = ({
                                 ifOverflow="extendDomain"
                                 label={{
                                     value: formatKeyPointValue(kp.value),
-                                    position: kp.type === 'max' ? 'top' : 'bottom',
+                                    position: kp.labelPosition || (kp.type === 'max' ? 'top' : 'bottom'),
                                     fill: kp.lineColor || (kp.type === 'max' ? '#22c55e' : '#ef4444'),
                                     fontSize: 9,
                                     fontWeight: 600,

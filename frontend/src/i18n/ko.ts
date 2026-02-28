@@ -102,6 +102,12 @@ export const ko: Translations = {
         typeTrackday: '\ud2b8\ub799\ub370\uc774',
         eventName: '\ub300\ud68c\uba85',
         eventNamePlaceholder: '\uc608: 2024 KSBK 3\uc804',
+        riderName: '\ub77c\uc774\ub354',
+        riderNamePlaceholder: '\uc608: \ud64d\uae38\ub3d9',
+        batchProcessing: '{current}/{total} \ud30c\uc77c \ucc98\ub9ac \uc911...',
+        batchComplete: '{success}\uac1c \uc138\uc158 \uc800\uc7a5 \uc644\ub8cc',
+        batchFailed: '{count}\uac1c \ud30c\uc77c \ucc98\ub9ac \uc2e4\ud328',
+        batchSkipped: '{name}: {error}',
     },
     sessions: {
         title: '\uc138\uc158',
@@ -140,6 +146,13 @@ export const ko: Translations = {
         gSmooth: 'G \uc2a4\ubb34\ub529',
         gSmoothOn: 'G \uc2a4\ubb34\ub529 ON',
         gSmoothOff: 'G \uc2a4\ubb34\ub529 OFF',
+        gyroSmooth: 'PRY \uc2a4\ubb34\ub529',
+        gyroSmoothOn: 'PRY \uc2a4\ubb34\ub529 ON',
+        gyroSmoothOff: 'PRY \uc2a4\ubb34\ub529 OFF',
+        drivingMarkers: '\uc8fc\ud589 \uc774\ubca4\ud2b8',
+        drivingMarkersOn: '\uc8fc\ud589 \uc774\ubca4\ud2b8 \ub9c8\ucee4 \ud45c\uc2dc \uc911',
+        drivingMarkersOff: '\uc8fc\ud589 \uc774\ubca4\ud2b8 \ub9c8\ucee4 \uc228\uae40',
+        expandClose: 'ESC\ub85c \ub2eb\uae30',
     },
     lapMetrics: {
         lapActivityBreakdown: '\ub7a9 \ud65c\ub3d9 \ubd84\uc11d',
@@ -253,6 +266,11 @@ export const ko: Translations = {
         backToReport: '\ub3cc\uc544\uac00\uae30',
         noPastReports: '\uc800\uc7a5\ub41c \ub9ac\ud3ec\ud2b8\uac00 \uc5c6\uc2b5\ub2c8\ub2e4.',
         loadedPastReport: '\uc9c0\ub09c \ub9ac\ud3ec\ud2b8',
+    },
+    auth: {
+        signIn: '로그인',
+        signInGoogle: 'Google로 로그인',
+        signOut: '로그아웃',
     },
     whatIf: {
         title: 'What-If \ubd84\uc11d',

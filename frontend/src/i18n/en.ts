@@ -102,6 +102,12 @@ export const en: Translations = {
         typeTrackday: 'Track Day',
         eventName: 'Event Name',
         eventNamePlaceholder: 'e.g. 2024 KSBK Round 3',
+        riderName: 'Rider',
+        riderNamePlaceholder: 'e.g. John Doe',
+        batchProcessing: 'Processing {current}/{total} files...',
+        batchComplete: '{success} sessions saved',
+        batchFailed: '{count} file(s) failed',
+        batchSkipped: '{name}: {error}',
     },
     sessions: {
         title: 'Sessions',
@@ -140,6 +146,13 @@ export const en: Translations = {
         gSmooth: 'G Smoothing',
         gSmoothOn: 'G Smoothing ON',
         gSmoothOff: 'G Smoothing OFF',
+        gyroSmooth: 'PRY Smoothing',
+        gyroSmoothOn: 'PRY Smoothing ON',
+        gyroSmoothOff: 'PRY Smoothing OFF',
+        drivingMarkers: 'Events',
+        drivingMarkersOn: 'Driving event markers shown',
+        drivingMarkersOff: 'Driving event markers hidden',
+        expandClose: 'Press ESC to close',
     },
     lapMetrics: {
         lapActivityBreakdown: 'Lap Activity Breakdown',
@@ -253,6 +266,11 @@ export const en: Translations = {
         backToReport: 'Back',
         noPastReports: 'No past reports found.',
         loadedPastReport: 'Past Report',
+    },
+    auth: {
+        signIn: 'Sign In',
+        signInGoogle: 'Sign in with Google',
+        signOut: 'Sign Out',
     },
     whatIf: {
         title: 'What-If Analysis',

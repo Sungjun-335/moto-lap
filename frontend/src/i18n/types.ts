@@ -102,6 +102,12 @@ export interface Translations {
         typeTrackday: string;
         eventName: string;
         eventNamePlaceholder: string;
+        riderName: string;
+        riderNamePlaceholder: string;
+        batchProcessing: string;
+        batchComplete: string;
+        batchFailed: string;
+        batchSkipped: string;
     };
     sessions: {
         title: string;
@@ -140,6 +146,13 @@ export interface Translations {
         gSmooth: string;
         gSmoothOn: string;
         gSmoothOff: string;
+        gyroSmooth: string;
+        gyroSmoothOn: string;
+        gyroSmoothOff: string;
+        drivingMarkers: string;
+        drivingMarkersOn: string;
+        drivingMarkersOff: string;
+        expandClose: string;
     };
     lapMetrics: {
         lapActivityBreakdown: string;
@@ -253,6 +266,11 @@ export interface Translations {
         backToReport: string;
         noPastReports: string;
         loadedPastReport: string;
+    };
+    auth: {
+        signIn: string;
+        signInGoogle: string;
+        signOut: string;
     };
     whatIf: {
         title: string;

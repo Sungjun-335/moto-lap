@@ -60,6 +60,7 @@ interface AnalysisChartWrapperProps {
     cursorDistance?: number | null;
     cornerRanges?: CornerRange[];
     drivingEventMarkers?: DrivingEventMarker[];
+    onDoubleClick?: () => void;
 }
 
 const CursorOverlay: React.FC<{ cursorDistance: number | null; data: AnalysisPoint[] }> = React.memo(
@@ -105,7 +106,8 @@ export const AnalysisChartWrapper: React.FC<AnalysisChartWrapperProps> = ({
     zoomDomain,
     cursorDistance,
     cornerRanges,
-    drivingEventMarkers
+    drivingEventMarkers,
+    onDoubleClick,
 }) => {
     let refAreaLeft: number | null = null;
     let refAreaRight: number | null = null;
@@ -134,7 +136,7 @@ export const AnalysisChartWrapper: React.FC<AnalysisChartWrapperProps> = ({
     };
 
     return (
-        <div className="bg-zinc-900 rounded-lg p-1 relative">
+        <div className="bg-zinc-900 rounded-lg p-1 relative cursor-pointer" onDoubleClick={onDoubleClick}>
             {ChartComponent ? (
                 <ChartComponent {...sharedProps} />
             ) : flexConfig ? (

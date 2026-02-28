@@ -3,8 +3,8 @@ import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceArea, ReferenceLine, ReferenceDot
 } from 'recharts';
 import type { AnalysisPoint } from '../../utils/analysis';
-import type { CornerRange } from './AnalysisChartWrapper';
-import { findKeyPoints, formatKeyPointValue } from '../../utils/keyPoints';
+import type { CornerRange, DrivingEventMarker } from './AnalysisChartWrapper';
+import { findKeyPoints, findCornerKeyPoints, resolveKeyPointPositions, adjustKeyPointsForLines, formatKeyPointValue } from '../../utils/keyPoints';
 
 export interface LineConfig {
     dataKey: keyof AnalysisPoint;
@@ -31,23 +31,40 @@ export interface FlexibleLineChartProps {
     refAreaLeft?: number | null;
     refAreaRight?: number | null;
     cornerRanges?: CornerRange[];
+    drivingEventMarkers?: DrivingEventMarker[];
 }
 
 const CORNER_COLORS = ['rgba(59,130,246,0.22)', 'rgba(168,85,247,0.22)'];
 
+const EVENT_COLORS: Record<string, string> = {
+    SOB: '#fca5a5', COB: '#ef4444', EOB: '#b91c1c',
+    SOL: '#c4b5fd', COL: '#8b5cf6', EOL: '#6d28d9',
+    SOT: '#86efac', COT: '#22c55e', EOT: '#15803d',
+    G_DIP: '#f59e0b',
+    MIN_VEL: '#06b6d4',
+};
+
 const FlexibleLineChart: React.FC<FlexibleLineChartProps> = ({
     data, height = 180, syncId, title, lines, yDomain,
     onMouseMove, onMouseDown, onMouseUp, onMouseLeave,
-    zoomDomain, refAreaLeft, refAreaRight, cornerRanges
+    zoomDomain, refAreaLeft, refAreaRight, cornerRanges, drivingEventMarkers,
 }) => {
-    // Find key points for ALL non-stepAfter lines (both ref and ana)
+    // Find key points: per-corner if corner ranges available, else global
+    // Pipeline: find → adjust for line overlap → resolve label-to-label conflicts
     const allKeyPoints = useMemo(() => {
         if (data.length < 10) return [];
         const continuousLines = lines.filter(l => l.type !== 'stepAfter');
-        return continuousLines.flatMap(line =>
-            findKeyPoints(data, line.dataKey, line.color)
-        );
-    }, [data, lines]);
+        let raw: ReturnType<typeof findKeyPoints>;
+        if (cornerRanges?.length) {
+            raw = findCornerKeyPoints(data, cornerRanges, lines);
+        } else {
+            raw = continuousLines.flatMap(line =>
+                findKeyPoints(data, line.dataKey, line.color)
+            );
+        }
+        const adjusted = adjustKeyPointsForLines(raw, data, continuousLines);
+        return resolveKeyPointPositions(adjusted);
+    }, [data, lines, cornerRanges]);
 
     return (
         <div style={{ width: '100%', height }} className="bg-zinc-900 rounded-lg border border-zinc-800 p-2 flex flex-col" onMouseUp={onMouseUp}>
@@ -110,6 +127,25 @@ const FlexibleLineChart: React.FC<FlexibleLineChartProps> = ({
                             />
                         ))}
 
+                        {drivingEventMarkers?.map((marker, i) => (
+                            <ReferenceLine
+                                key={`ev-${marker.source}-${marker.cornerId}-${marker.type}-${i}`}
+                                x={marker.distance}
+                                stroke={EVENT_COLORS[marker.type] || '#888'}
+                                strokeWidth={1.2}
+                                strokeOpacity={0.7}
+                                strokeDasharray={marker.source === 'ref' ? '4 3' : undefined}
+                                ifOverflow="extendDomain"
+                                label={{
+                                    value: marker.type,
+                                    position: marker.source === 'ref' ? 'top' : 'bottom',
+                                    fill: EVENT_COLORS[marker.type] || '#888',
+                                    fontSize: 7,
+                                    fontWeight: 500,
+                                }}
+                            />
+                        ))}
+
                         <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
                         <XAxis
                             dataKey="distance"
@@ -158,7 +194,7 @@ const FlexibleLineChart: React.FC<FlexibleLineChartProps> = ({
                                 ifOverflow="extendDomain"
                                 label={{
                                     value: formatKeyPointValue(kp.value),
-                                    position: kp.type === 'max' ? 'top' : 'bottom',
+                                    position: kp.labelPosition || (kp.type === 'max' ? 'top' : 'bottom'),
                                     fill: kp.lineColor || (kp.type === 'max' ? '#22c55e' : '#ef4444'),
                                     fontSize: 9,
                                     fontWeight: 600,
@@ -180,5 +216,6 @@ export default React.memo(FlexibleLineChart, (prev, next) => {
         prev.lines === next.lines &&
         prev.refAreaLeft === next.refAreaLeft &&
         prev.refAreaRight === next.refAreaRight &&
-        prev.cornerRanges === next.cornerRanges;
+        prev.cornerRanges === next.cornerRanges &&
+        prev.drivingEventMarkers === next.drivingEventMarkers;
 });

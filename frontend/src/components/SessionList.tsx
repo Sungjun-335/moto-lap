@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Plus, Trash2, HardDrive, Loader2, Trophy, X, ArrowRight } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Plus, Trash2, HardDrive, Loader2, Trophy, X, ArrowRight, ArrowLeft, FileText, User } from 'lucide-react';
 import type { SessionData, SessionSummary } from '../types';
 import { useTranslation } from '../i18n/context';
 import { formatLapTime } from '../utils/formatLapTime';
@@ -14,6 +14,7 @@ interface SessionListProps {
     onSavedSessionSelect: (id: string) => void;
     onSavedSessionDelete: (id: string) => void;
     onPairSelect?: (anaId: string, refId: string) => void;
+    onBack?: () => void;
 }
 
 const SessionList: React.FC<SessionListProps> = ({
@@ -26,6 +27,7 @@ const SessionList: React.FC<SessionListProps> = ({
     onSavedSessionSelect,
     onSavedSessionDelete,
     onPairSelect,
+    onBack,
 }) => {
     const { t } = useTranslation();
     const [selectedAnaId, setSelectedAnaId] = useState<string | null>(null);
@@ -77,14 +79,53 @@ const SessionList: React.FC<SessionListProps> = ({
 
     const hasAny = sessions.length > 0 || savedOnly.length > 0;
 
+    // Group by venue → rider+bike
+    type CardItem =
+        | { type: 'memory'; session: SessionData; index: number }
+        | { type: 'saved'; summary: SessionSummary };
+
+    const grouped = useMemo(() => {
+        const allItems: CardItem[] = [
+            ...sessions.map((session, index) => ({ type: 'memory' as const, session, index })),
+            ...savedOnly.map(summary => ({ type: 'saved' as const, summary })),
+        ];
+
+        const venueMap = new Map<string, Map<string, CardItem[]>>();
+
+        for (const item of allItems) {
+            const meta = item.type === 'memory' ? item.session.metadata : item.summary.metadata;
+            const venue = meta.venue || 'Unknown';
+            const rider = meta.riderName || '';
+            const bike = meta.bikeModel || meta.vehicle || '';
+            const riderBikeKey = [rider, bike].filter(Boolean).join(' · ') || 'Unknown';
+
+            if (!venueMap.has(venue)) venueMap.set(venue, new Map());
+            const riderMap = venueMap.get(venue)!;
+            if (!riderMap.has(riderBikeKey)) riderMap.set(riderBikeKey, []);
+            riderMap.get(riderBikeKey)!.push(item);
+        }
+
+        return venueMap;
+    }, [sessions, savedOnly]);
+
     return (
         <div className="flex flex-col h-screen max-w-6xl mx-auto p-6 text-zinc-100">
             <header className="flex items-center justify-between mb-8">
-                <div>
-                    <h2 className="text-2xl font-bold text-white">{t.sessions.title}</h2>
-                    <p className="text-zinc-400">
-                        {t.sessions.subtitle}
-                    </p>
+                <div className="flex items-center gap-3">
+                    {onBack && (
+                        <button
+                            onClick={onBack}
+                            className="flex items-center justify-center w-8 h-8 rounded-lg border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500 transition"
+                        >
+                            <ArrowLeft className="w-4 h-4" />
+                        </button>
+                    )}
+                    <div>
+                        <h2 className="text-2xl font-bold text-white">{t.sessions.title}</h2>
+                        <p className="text-zinc-400">
+                            {t.sessions.subtitle}
+                        </p>
+                    </div>
                 </div>
                 <button
                     onClick={onUploadClick}
@@ -134,178 +175,131 @@ const SessionList: React.FC<SessionListProps> = ({
                     <p className="text-sm">{t.sessions.uploadToStart}</p>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {/* In-memory sessions */}
-                    {sessions.map((session, index) => {
-                        const bestLap = session.laps.length
-                            ? Math.min(...session.laps.map(l => l.duration))
-                            : null;
-                        const meta = session.metadata;
-                        const sessionTypeLabels: Record<string, string> = {
-                            practice: t.upload.typePractice,
-                            race: t.upload.typeRace,
-                            warmup: t.upload.typeWarmup,
-                            trackday: t.upload.typeTrackday,
-                        };
-                        const isAna = selectedAnaId != null && session.id === selectedAnaId;
-                        const isRef = selectedRefId != null && session.id === selectedRefId;
-                        return (
-                            <div
-                                key={session.id || `mem-${index}`}
-                                onClick={() => handleCardClick(session.id, () => onSessionSelect(session))}
-                                className={`bg-zinc-900 border rounded-xl p-6 cursor-pointer transition group relative ${
-                                    isAna
-                                        ? 'border-red-500 ring-1 ring-red-500/30'
-                                        : isRef
-                                        ? 'border-blue-500 ring-1 ring-blue-500/30'
-                                        : 'border-zinc-800 hover:border-blue-500/50'
-                                }`}
-                            >
-                                {isAna && (
-                                    <div className="absolute -top-2 -left-2 px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded-md shadow-lg">
-                                        ANA
-                                    </div>
-                                )}
-                                {isRef && (
-                                    <div className="absolute -top-2 -left-2 px-2 py-0.5 bg-blue-600 text-white text-[10px] font-bold rounded-md shadow-lg">
-                                        REF
-                                    </div>
-                                )}
-                                <div className="flex justify-between items-start mb-1">
-                                    <div className="flex items-center gap-2">
-                                        <h3 className="text-lg font-bold text-white group-hover:text-blue-400 transition">{meta.venue}</h3>
-                                        {meta.condition && (
-                                            <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${
-                                                meta.condition === 'dry'
-                                                    ? 'bg-emerald-900/40 text-emerald-400 border border-emerald-800/50'
-                                                    : 'bg-blue-900/40 text-blue-400 border border-blue-800/50'
-                                            }`}>
-                                                {meta.condition === 'dry' ? t.upload.conditionDry : t.upload.conditionWet}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            onSessionRemove(index);
-                                        }}
-                                        className="text-zinc-500 hover:text-red-500 transition p-2 hover:bg-zinc-800 rounded-full"
-                                        title={t.sessions.removeSession}
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-                                <div className="space-y-1 text-sm text-zinc-400">
-                                    <p>{meta.date} {meta.time}</p>
-                                    <p>
-                                        {meta.bikeModel || meta.vehicle}
-                                        {meta.sessionType && <> · {sessionTypeLabels[meta.sessionType] ?? meta.sessionType}</>}
-                                    </p>
-                                    {meta.eventName && (
-                                        <p className="text-xs text-zinc-500">{meta.eventName}</p>
-                                    )}
-                                    <div className="mt-4 pt-4 border-t border-zinc-800 flex justify-between items-center">
-                                        <span>{t.common.laps}: {session.laps.length}</span>
-                                        {bestLap != null && (
-                                            <span className="flex items-center gap-1 text-yellow-400 font-mono text-sm font-medium">
-                                                <Trophy size={14} />
-                                                {formatLapTime(bestLap)}
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    })}
+                <div className="space-y-8 overflow-auto pb-8">
+                    {Array.from(grouped.entries()).map(([venue, riderMap]) => (
+                        <div key={venue}>
+                            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                                <span className="w-1.5 h-5 bg-emerald-500 rounded-full" />
+                                {venue}
+                            </h3>
+                            <div className="space-y-5 pl-3">
+                                {Array.from(riderMap.entries()).map(([riderBike, items]) => (
+                                    <div key={riderBike}>
+                                        <p className="text-xs text-zinc-500 mb-2 flex items-center gap-1.5">
+                                            <User size={11} />
+                                            {riderBike}
+                                        </p>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                            {items.map(item => {
+                                                const isMemory = item.type === 'memory';
+                                                const meta = isMemory ? item.session.metadata : item.summary.metadata;
+                                                const id = isMemory ? item.session.id : item.summary.id;
+                                                const lapCount = isMemory ? item.session.laps.length : item.summary.lapCount;
+                                                const bestLap = isMemory
+                                                    ? (item.session.laps.length ? Math.min(...item.session.laps.map(l => l.duration)) : null)
+                                                    : item.summary.bestLapTime;
+                                                const isLoading = !isMemory && loadingSessionId === item.summary.id;
+                                                const isAna = selectedAnaId != null && id === selectedAnaId;
+                                                const isRef = selectedRefId != null && id === selectedRefId;
+                                                const sessionTypeLabels: Record<string, string> = {
+                                                    practice: t.upload.typePractice,
+                                                    race: t.upload.typeRace,
+                                                    warmup: t.upload.typeWarmup,
+                                                    trackday: t.upload.typeTrackday,
+                                                };
 
-                    {/* Saved-only sessions (not in memory) */}
-                    {savedOnly.map(summary => {
-                        const isLoading = loadingSessionId === summary.id;
-                        const meta = summary.metadata;
-                        const sessionTypeLabels: Record<string, string> = {
-                            practice: t.upload.typePractice,
-                            race: t.upload.typeRace,
-                            warmup: t.upload.typeWarmup,
-                            trackday: t.upload.typeTrackday,
-                        };
-                        const isAna = selectedAnaId != null && summary.id === selectedAnaId;
-                        const isRef = selectedRefId != null && summary.id === selectedRefId;
-                        return (
-                            <div
-                                key={summary.id}
-                                onClick={() => !isLoading && handleCardClick(summary.id, () => onSavedSessionSelect(summary.id))}
-                                className={`bg-zinc-900 border rounded-xl p-6 cursor-pointer transition group relative ${
-                                    isLoading ? 'opacity-60 pointer-events-none' :
-                                    isAna ? 'border-red-500 ring-1 ring-red-500/30' :
-                                    isRef ? 'border-blue-500 ring-1 ring-blue-500/30' :
-                                    'border-zinc-800 hover:border-blue-500/50'
-                                }`}
-                            >
-                                {isAna && (
-                                    <div className="absolute -top-2 -left-2 px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded-md shadow-lg">
-                                        ANA
-                                    </div>
-                                )}
-                                {isRef && (
-                                    <div className="absolute -top-2 -left-2 px-2 py-0.5 bg-blue-600 text-white text-[10px] font-bold rounded-md shadow-lg">
-                                        REF
-                                    </div>
-                                )}
-                                <div className="flex justify-between items-start mb-1">
-                                    <div className="flex items-center gap-2">
-                                        <h3 className="text-lg font-bold text-white group-hover:text-blue-400 transition">{meta.venue}</h3>
-                                        <span title="Saved to device"><HardDrive size={14} className="text-zinc-500" /></span>
-                                        {meta.condition && (
-                                            <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${
-                                                meta.condition === 'dry'
-                                                    ? 'bg-emerald-900/40 text-emerald-400 border border-emerald-800/50'
-                                                    : 'bg-blue-900/40 text-blue-400 border border-blue-800/50'
-                                            }`}>
-                                                {meta.condition === 'dry' ? t.upload.conditionDry : t.upload.conditionWet}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            onSavedSessionDelete(summary.id);
-                                        }}
-                                        className="text-zinc-500 hover:text-red-500 transition p-2 hover:bg-zinc-800 rounded-full"
-                                        title={t.sessions.deleteSavedSession}
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-                                <div className="space-y-1 text-sm text-zinc-400">
-                                    <p>{meta.date} {meta.time}</p>
-                                    <p>
-                                        {meta.bikeModel || meta.vehicle}
-                                        {meta.sessionType && <> · {sessionTypeLabels[meta.sessionType] ?? meta.sessionType}</>}
-                                    </p>
-                                    {meta.eventName && (
-                                        <p className="text-xs text-zinc-500">{meta.eventName}</p>
-                                    )}
-                                    <div className="mt-4 pt-4 border-t border-zinc-800 flex justify-between items-center">
-                                        <span>{t.common.laps}: {summary.lapCount}</span>
-                                        <div className="flex items-center gap-2">
-                                            {summary.bestLapTime != null && (
-                                                <span className="flex items-center gap-1 text-yellow-400 font-mono text-sm font-medium">
-                                                    <Trophy size={14} />
-                                                    {formatLapTime(summary.bestLapTime)}
-                                                </span>
-                                            )}
-                                            {isLoading && (
-                                                <span className="flex items-center gap-1 text-blue-400 text-xs">
-                                                    <Loader2 size={12} className="animate-spin" />
-                                                    {t.sessions.restoring}
-                                                </span>
-                                            )}
+                                                return (
+                                                    <div
+                                                        key={id || `mem-${isMemory ? item.index : ''}`}
+                                                        onClick={() => {
+                                                            if (isLoading) return;
+                                                            if (isMemory) {
+                                                                handleCardClick(id, () => onSessionSelect(item.session));
+                                                            } else {
+                                                                handleCardClick(id, () => onSavedSessionSelect(item.summary.id));
+                                                            }
+                                                        }}
+                                                        className={`bg-zinc-900 border rounded-xl p-5 cursor-pointer transition group relative ${
+                                                            isLoading ? 'opacity-60 pointer-events-none' :
+                                                            isAna ? 'border-red-500 ring-1 ring-red-500/30' :
+                                                            isRef ? 'border-blue-500 ring-1 ring-blue-500/30' :
+                                                            'border-zinc-800 hover:border-blue-500/50'
+                                                        }`}
+                                                    >
+                                                        {isAna && (
+                                                            <div className="absolute -top-2 -left-2 px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded-md shadow-lg">ANA</div>
+                                                        )}
+                                                        {isRef && (
+                                                            <div className="absolute -top-2 -left-2 px-2 py-0.5 bg-blue-600 text-white text-[10px] font-bold rounded-md shadow-lg">REF</div>
+                                                        )}
+                                                        <div className="flex justify-between items-start mb-1">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-sm font-medium text-white group-hover:text-blue-400 transition">
+                                                                    {meta.date} {meta.time}
+                                                                </span>
+                                                                {!isMemory && <HardDrive size={12} className="text-zinc-600" />}
+                                                                {meta.condition && (
+                                                                    <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${
+                                                                        meta.condition === 'dry'
+                                                                            ? 'bg-emerald-900/40 text-emerald-400 border border-emerald-800/50'
+                                                                            : 'bg-blue-900/40 text-blue-400 border border-blue-800/50'
+                                                                    }`}>
+                                                                        {meta.condition === 'dry' ? t.upload.conditionDry : t.upload.conditionWet}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (isMemory) onSessionRemove(item.index);
+                                                                    else onSavedSessionDelete(item.summary.id);
+                                                                }}
+                                                                className="text-zinc-600 hover:text-red-500 transition p-1.5 hover:bg-zinc-800 rounded-full"
+                                                                title={isMemory ? t.sessions.removeSession : t.sessions.deleteSavedSession}
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        </div>
+                                                        <div className="space-y-1 text-sm text-zinc-400">
+                                                            {meta.sessionType && (
+                                                                <p className="text-xs">{sessionTypeLabels[meta.sessionType] ?? meta.sessionType}</p>
+                                                            )}
+                                                            {meta.eventName && (
+                                                                <p className="text-xs text-zinc-500">{meta.eventName}</p>
+                                                            )}
+                                                            {meta.fileName && (
+                                                                <p className="flex items-center gap-1 text-xs text-zinc-600 truncate">
+                                                                    <FileText size={10} />
+                                                                    {meta.fileName}
+                                                                </p>
+                                                            )}
+                                                            <div className="mt-3 pt-3 border-t border-zinc-800 flex justify-between items-center">
+                                                                <span className="text-xs">{t.common.laps}: {lapCount}</span>
+                                                                <div className="flex items-center gap-2">
+                                                                    {bestLap != null && (
+                                                                        <span className="flex items-center gap-1 text-yellow-400 font-mono text-sm font-medium">
+                                                                            <Trophy size={13} />
+                                                                            {formatLapTime(bestLap)}
+                                                                        </span>
+                                                                    )}
+                                                                    {isLoading && (
+                                                                        <span className="flex items-center gap-1 text-blue-400 text-xs">
+                                                                            <Loader2 size={12} className="animate-spin" />
+                                                                            {t.sessions.restoring}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
-                                </div>
+                                ))}
                             </div>
-                        );
-                    })}
+                        </div>
+                    ))}
                 </div>
             )}
         </div>

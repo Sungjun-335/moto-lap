@@ -1,4 +1,5 @@
 import type { SessionData, Corner, LapMetrics, BrakingProfile, LeanProfile, ThrottleProfile, GDip, CoastingPenalty, BrakeJerk } from '../types';
+import type { AnalysisPoint } from './analysis';
 
 // ─── Report Data Types ───
 
@@ -63,6 +64,12 @@ interface CornerComparison {
   trail_braking_overlap_s: number | null;
 }
 
+interface CornerRange {
+  id: number;
+  startDist: number;
+  endDist: number;
+}
+
 export interface ReportData {
   venue: string;
   vehicle: string;
@@ -75,6 +82,8 @@ export interface ReportData {
   refMetrics: LapMetrics | undefined;
   anaMetrics: LapMetrics | undefined;
   corners: CornerComparison[];
+  analysisPoints?: AnalysisPoint[];
+  cornerRanges?: CornerRange[];
 }
 
 // ─── Data Collection ───
@@ -188,6 +197,8 @@ export function collectReportData(
   data: SessionData,
   refLapIndex: number,
   anaLapIndex: number,
+  analysisPoints?: AnalysisPoint[],
+  cornerRanges?: { id: number; startDist: number; endDist: number }[],
 ): ReportData {
   const refLap = data.laps.find(l => l.index === refLapIndex);
   const anaLap = data.laps.find(l => l.index === anaLapIndex);
@@ -222,6 +233,8 @@ export function collectReportData(
     refMetrics: refLap?.metrics,
     anaMetrics: anaLap?.metrics,
     corners,
+    analysisPoints,
+    cornerRanges,
   };
 }
 
@@ -230,10 +243,20 @@ export function collectReportData(
 function buildSystemInstruction(lang: 'ko' | 'en'): string {
   if (lang === 'en') {
     return `You are a world championship level (MotoGP, WSBK) professional motorcycle racing coach.
-Your role is to analyze rider track telemetry data, pinpoint the causes of lap time differences, and provide practical, specific coaching points.
+Your role is to analyze rider track telemetry data, pinpoint the causes of lap time differences, and provide practical, specific coaching points. The rider is a beginner, so avoid jargon and explain technical terms in simple language.
 
 I will provide summary JSON data for two laps (reference lap and comparison lap).
-The data includes braking (BRK), cornering (CRN), throttle (TPS), coasting (CST) time and percentages, plus per-corner detailed profiles (entry/min/exit speeds, braking profile SOB/COB/EOB based on cumulative deceleration, lean profile SOL/COL/EOL based on cumulative lean angle, etc.).
+The data includes braking (BRK), cornering (CRN), throttle (TPS), coasting (CST) time and percentages, plus per-corner detailed profiles (entry/min/exit speeds, braking profile SOB/COB/EOB based on cumulative deceleration, lean profile SOL/COL/EOL based on cumulative lean angle, throttle roll-on SOT/COT/EOT, etc.).
+
+Each corner may also include a "curves" array — sampled time-series data through the corner with keys: d (distance km), rs/as (ref/ana speed kph), rlg/alg (ref/ana longitudinal G), rlag/alag (ref/ana lateral G), rgs/ags (ref/ana G-Sum). Use these curves to identify WHERE in the corner (by distance) speed diverges, where G-force transitions happen, and how smoothly the rider manages the friction circle through the corner. Reference the curves to support your analysis with specific distance-based observations.
+
+Do NOT just list the numbers — explain what the values MEAN in practical terms and what actions the rider can take to improve.
+
+When comparing braking, cornering, throttle, and coasting, prefer using distance (meters) over time. For example, if the rider braked too early, say "brake 5m later" rather than "brake 0.3s later."
+
+Refer to G-Sum as "tire friction limit." Compare G-Sum max values — if G-Sum is low, explain that the rider has spare tire grip available. Teach the rider what G-Sum means.
+
+Coasting means "a phase where the rider is not accelerating, braking, or cornering."
 
 ### [Analysis Rules and Guidelines]
 
@@ -241,21 +264,21 @@ The data includes braking (BRK), cornering (CRN), throttle (TPS), coasting (CST)
 - State the total lap time difference to three decimal places, and summarize in one sentence whether the comparison lap is slower or faster than the reference.
 
 2. Lap Composition Analysis (Lap Metrics)
-- Present BRK, CRN, TPS, CST seconds and percentages in table format.
+- Present BRK, CRN, TPS, CST seconds, percentages, and distance (m) in table format.
 - Interpret how these ratio differences affected lap time from a coaching perspective.
   (e.g., "Braking time increased but braking G is low — the rider braked too softly and for too long.")
 
 3. Corner-by-Corner Analysis (ordered by largest time delta)
 - For each corner, compare and analyze all of the following:
   * Speed profile: entry, min (apex corner speed), exit speeds. (Where was speed lost?)
-  * Braking technique: SOB(10%), COB(50%), EOB(90%) timing and total_brk_g_s (total deceleration), min_accel_x_g (peak braking force). COB close to EOB = "trail braking (late concentration)" pattern; close to SOB = "hard-early braking" pattern.
-  * Lean profile: SOL, COL, EOL timing and max lean angle (max_lean_deg). If lean angle is excessive but lateral G (lat_g) is low, point out inefficient lean angle usage.
-  * Trail braking overlap: Analyze EOB and SOL overlap.
+  * Braking technique: SOB(10%), COB(50%), EOB(90%) timing and total_brk_g_s (total deceleration), min_accel_x_g (peak braking force). COB close to EOB = "trail braking (late concentration)" pattern; close to SOB = "hard-early braking" pattern. Compare EOBs between laps and against apex distance to judge if braking ended too early. Decide whether the rider should delay the braking point or extend trail braking.
+  * Lean profile: SOL, COL, EOL timing and max lean angle (max_lean_deg). If lean angle is excessive but lateral G (lat_g) is low, point out inefficient lean angle usage. Use G-Sum values to judge how lean angle should integrate with trail braking. Use lean angle to judge approach speed strategy.
+  * Trail braking overlap: Analyze EOB and SOL overlap. Use G-Sum values to support the analysis.
   * Throttle roll-on: SOT(10%), COT(50%), EOT(90%) timing and total_tps_g_s (total acceleration), max_accel_x_g (peak acceleration G). Earlier SOT = faster corner exit acceleration.
-  * G-Dip analysis: Entry phase G-Sum minimum (g_dip_value) and ratio (g_dip_ratio). Closer to 1.0 = smoother friction circle transition.
+  * G-Dip analysis: Entry phase G-Sum minimum (g_dip_value) and ratio (g_dip_ratio). Closer to 1.0 = smoother friction circle transition. Explain to the rider as "tire friction limit transition efficiency."
   * Coasting penalty: Coasting time (cst_total_time_s) and speed loss (cst_speed_loss_kph). More coasting = wasted time.
-  * Brake jerk: Max jerk (max_brake_jerk_g_per_s) and initial mean jerk (mean_brake_jerk_g_per_s). Higher jerk = more aggressive braking.
-- Coaching points: At the end of each corner, provide 1-2 specific actionable corrections (e.g., "Delay braking onset by 0.5s and increase initial lever pressure to shorten the braking zone").
+  * Brake jerk: Max jerk (max_brake_jerk_g_per_s) and initial mean jerk (mean_brake_jerk_g_per_s). Higher jerk = more aggressive braking. Explain to the rider as "how quickly/hard the brake is grabbed."
+- Coaching points: At the end of each corner, provide 1-2 specific actionable corrections using distance (m) (e.g., "Delay braking onset by 5m and increase initial lever pressure to shorten the braking zone").
 
 4. Top 3 Improvement Points
 - Summarize the top 3 priorities that will most reduce lap time. Include root causes and specific action plans.
@@ -267,14 +290,25 @@ The data includes braking (BRK), cornering (CRN), throttle (TPS), coasting (CST)
 - Maintain a professional, clear, and decisive tone while being encouraging.
 - Cut unnecessary filler — focus on data-backed facts.
 - Always **bold** key numbers.
+- When using technical terms, always include a simple explanation for beginners.
 - Write in English.`;
   }
 
   return `너는 월드 챔피언십(MotoGP, WSBK) 수준의 전문 모터사이클 레이싱 코치야.
-라이더의 트랙 주행 데이터(텔레메트리 데이터)를 분석하여, 랩 타임 차이가 발생하는 원인을 정확히 짚어내고 실질적이고 구체적인 개선점(Coaching Point)을 제시하는 것이 너의 역할이야.
+라이더의 트랙 주행 데이터(텔레메트리 데이터)를 분석하여, 랩 타임 차이가 발생하는 원인을 정확히 짚어내고 실질적이고 구체적인 개선점(Coaching Point)을 제시하는 것이 너의 역할이야. 다만, 라이더는 초보이니, 최대한 전문용어 사용을 자제하고 쉽게 설명해줘.
 
 내가 제공하는 데이터는 두 개의 랩(기준 랩과 비교 랩)에 대한 요약 JSON 데이터야.
-데이터는 브레이킹(BRK), 코너링(CRN), 스로틀(TPS), 코스팅(CST) 시간과 비율, 그리고 코너별 상세 프로필(진입/최소/탈출 속도, 누적 감속량에 따른 브레이킹 프로파일 SOB/COB/EOB, 누적 기울기에 따른 린 프로파일 SOL/COL/EOL 등)을 포함하고 있어.
+데이터는 브레이킹(BRK), 코너링(CRN), 스로틀(TPS), 코스팅(CST) 시간과 비율, 그리고 코너별 상세 프로필(진입/최소/탈출 속도, 누적 감속량에 따른 브레이킹 프로파일 SOB/COB/EOB, 누적 기울기에 따른 린 프로파일 SOL/COL/EOL, 스로틀 전개 SOT/COT/EOT 등)을 포함하고 있어.
+
+각 코너에는 "curves" 배열이 포함될 수 있어 — 코너 구간의 샘플링된 시계열 데이터로, 키는: d(거리 km), rs/as(기준/비교 속도 kph), rlg/alg(기준/비교 종방향 G), rlag/alag(기준/비교 횡방향 G), rgs/ags(기준/비교 G-Sum)이야. 이 커브 데이터를 활용해서 코너 내 어느 지점(거리)에서 속도 차이가 발생하는지, G-force 전환이 어떻게 이루어지는지, 라이더가 마찰원을 얼마나 매끄럽게 활용하는지를 분석해줘. 구체적인 거리 기반 관찰을 근거로 제시할 것.
+
+해당 값들을 단순히 나열하는 게 아니라, 값이 의미하는 결과와, 어떤 행동으로 이를 극복할 수 있을지를 표현해야 해.
+
+브레이킹, 코너링, 스로틀, 코스팅 시간을 비교할 땐 시간보다는 거리(m)를 알려줘. 예를 들면, 브레이크를 너무 일찍 잡았다면 "몇 m 뒤에서 잡으세요"라고 알려주면 돼.
+
+G Sum 값은 "타이어 마찰 한계점"이라고 표기해줘. G Sum 최대값을 비교해주고, G Sum이 낮다면 타이어 그립력에 여유가 있다고 표현해. 그리고 그 값이 G Sum이라고 가르치고 G Sum 정보를 알려줘.
+
+코스팅은 "가속도, 감속도, 코너링도 안 한 구간"이라고 표현해줘.
 
 다음의 분석 규칙을 엄격하게 준수하여 마크다운(Markdown) 형식의 체계적인 보고서를 작성해줘.
 
@@ -284,21 +318,21 @@ The data includes braking (BRK), cornering (CRN), throttle (TPS), coasting (CST)
 - 두 랩의 총 랩 타임 차이를 소수점 셋째 자리까지 명시하고, 비교 랩이 기준 랩보다 얼마나 느린지(또는 빠른지) 한 문장으로 핵심을 요약하라.
 
 2. 랩 구성 분석 (Lap Metrics)
-- BRK, CRN, TPS, CST의 초(s)와 비율(%) 차이를 표 형식으로 구성하라.
+- BRK, CRN, TPS, CST의 초(s)와 비율(%), 거리(m) 차이를 표 형식으로 구성하라.
 - 이 비율의 차이가 랩 타임에 어떤 영향을 미쳤는지 코치로서 직관적으로 해석하라.
   (예: "브레이킹 시간이 길어졌으나 브레이킹 G가 낮다면, 브레이크를 너무 약하고 길게 끌고 간 것이다.")
 
 3. 코너별 상세 분석 (가장 많은 시간차가 발생한 코너 순)
-- 각 코너마다 다음 4가지를 반드시 비교 및 분석하라.
+- 각 코너마다 다음 항목을 반드시 비교 및 분석하라.
   * 속도 프로파일: 진입 속도, 최소 속도(Apex 코너스피드), 탈출 속도. (어디서 속도를 잃었는가?)
-  * 브레이킹 기법: SOB(10%), COB(50%), EOB(90%) 시점 및 \`total_brk_g_s\`(총 감속량), \`min_accel_x_g\`(최대 제동력). COB가 EOB에 가까우면 "트레일 브레이킹(후반 집중)" 패턴, SOB에 가까우면 "하드-얼리 브레이킹(초반 집중)" 패턴으로 해석할 것.
-  * 린 프로파일: SOL, COL, EOL 시점 및 최대 린 각도(\`max_lean_deg\`). 린 각도가 과도한데 횡축 G(lat_g)가 낮다면 린 앵글을 비효율적으로 사용했다고 지적할 것.
-  * 트레일 브레이킹 오버랩: EOB와 SOL의 겹침 분석.
+  * 브레이킹 기법: SOB(10%), COB(50%), EOB(90%) 시점 및 \`total_brk_g_s\`(총 감속량), \`min_accel_x_g\`(최대 제동력). COB가 EOB에 가까우면 "트레일 브레이킹(후반 집중)" 패턴, SOB에 가까우면 "하드-얼리 브레이킹(초반 집중)" 패턴으로 해석할 것. EOB끼리 비교하고, APEX 거리와도 비교해서 브레이킹이 너무 빨리 끝났는지를 판단. 브레이킹 포인트를 늦춰야 할지, 트레일 브레이킹을 더 가져가야 할지 판단해줘.
+  * 린 프로파일: SOL, COL, EOL 시점 및 최대 린 각도(\`max_lean_deg\`). 린 각도가 과도한데 횡축 G(lat_g)가 낮다면 린 앵글을 비효율적으로 사용했다고 지적할 것. G Sum 값을 같이 활용해서, 트레일 브레이킹과 연동해서 기울기를 어떻게 가져가야 할지 판단. 린 앵글을 기반으로 어프로치 속도를 어떻게 가져갈지 판단해줘.
+  * 트레일 브레이킹 오버랩: EOB와 SOL의 겹침 분석. G Sum 값을 기반으로 판단해줘.
   * 스로틀 전개: SOT(10%), COT(50%), EOT(90%) 시점 및 \`total_tps_g_s\`(총 가속량), \`max_accel_x_g\`(최대 가속 G). SOT가 빠를수록 코너 탈출 가속이 빠름.
-  * G-Dip 분석: 진입 구간 G-Sum 최저점(\`g_dip_value\`)과 비율(\`g_dip_ratio\`). 1.0에 가까울수록 마찰원 전환이 매끄러움.
+  * G-Dip 분석: 진입 구간 G-Sum 최저점(\`g_dip_value\`)과 비율(\`g_dip_ratio\`). 1.0에 가까울수록 마찰원 전환이 매끄러움. 라이더에게는 "타이어 마찰 한계점 전환 효율"로 설명.
   * 코스팅 페널티: 코스팅 시간(\`cst_total_time_s\`)과 속도 손실(\`cst_speed_loss_kph\`). 코스팅이 길면 시간 낭비.
-  * 브레이크 저크: 최대 저크(\`max_brake_jerk_g_per_s\`)와 초기 평균 저크(\`mean_brake_jerk_g_per_s\`). 저크가 높으면 공격적 브레이킹.
-- 코칭 포인트: 각 코너 끝에 해당 라이더가 즉시 실험해볼 수 있는 구체적인 행동 교정 방법(예: "브레이킹 시작을 0.5초 늦추고, 초기 악력을 강하게 가져가 브레이킹 구간을 단축하세요")을 1-2개 제시하라.
+  * 브레이크 저크: 최대 저크(\`max_brake_jerk_g_per_s\`)와 초기 평균 저크(\`mean_brake_jerk_g_per_s\`). 저크가 높으면 공격적 브레이킹. 라이더에게는 "브레이크를 잡는 속도/세기"로 설명.
+- 코칭 포인트: 각 코너 끝에 해당 라이더가 즉시 실험해볼 수 있는 구체적인 행동 교정 방법(예: "브레이킹 시작을 5m 늦추고, 초기 악력을 강하게 가져가 브레이킹 구간을 단축하세요")을 1-2개 제시하라. 거리(m) 기반으로 설명할 것.
 
 4. 핵심 개선 포인트 (Top 3)
 - 랩 타임을 가장 크게 단축할 수 있는 우선순위 3가지를 정리하라. 근본적인 원인과 구체적인 액션 플랜을 포함하라.
@@ -309,7 +343,56 @@ The data includes braking (BRK), cornering (CRN), throttle (TPS), coasting (CST)
 ### [어조 및 스타일]
 - 전문가다운 명확하고 단호한 어조를 유지하되, 라이더를 격려하는 긍정적인 태도를 취하라.
 - 불필요한 미사여구를 빼고 데이터에 근거한 팩트에 집중하라.
-- 수치는 반드시 굵은 글씨(**bold**)로 강조하라.`;
+- 수치는 반드시 굵은 글씨(**bold**)로 강조하라.
+- 라이더가 초보임을 기억하고, 전문용어를 쓸 때 반드시 쉬운 설명을 병기하라.`;
+}
+
+// ─── Corner Time-Series Sampling ───
+
+const SAMPLES_PER_CORNER = 20;
+
+function sampleCornerCurves(
+  points: AnalysisPoint[],
+  startDist: number,
+  endDist: number,
+): object[] | null {
+  const slice = points.filter(p => p.distance >= startDist && p.distance <= endDist);
+  if (slice.length < 3) return null;
+
+  // Evenly sample ~SAMPLES_PER_CORNER points
+  const step = Math.max(1, Math.floor(slice.length / SAMPLES_PER_CORNER));
+  const sampled: object[] = [];
+  for (let i = 0; i < slice.length; i += step) {
+    const p = slice[i];
+    sampled.push({
+      d: round3(p.distance)!,
+      rs: round1(p.refSpeed),
+      as: round1(p.anaSpeed),
+      rlg: round2(p.refLonG),
+      alg: round2(p.anaLonG),
+      rlag: round2(p.refLatG),
+      alag: round2(p.anaLatG),
+      rgs: round2(p.refGSum),
+      ags: round2(p.anaGSum),
+    });
+    if (sampled.length >= SAMPLES_PER_CORNER) break;
+  }
+  // Always include last point
+  const last = slice[slice.length - 1];
+  if (sampled.length > 0 && sampled[sampled.length - 1] !== last) {
+    sampled.push({
+      d: round3(last.distance)!,
+      rs: round1(last.refSpeed),
+      as: round1(last.anaSpeed),
+      rlg: round2(last.refLonG),
+      alg: round2(last.anaLonG),
+      rlag: round2(last.refLatG),
+      alag: round2(last.anaLatG),
+      rgs: round2(last.refGSum),
+      ags: round2(last.anaGSum),
+    });
+  }
+  return sampled;
 }
 
 function buildDataPayload(rd: ReportData): object {
@@ -323,6 +406,12 @@ function buildDataPayload(rd: ReportData): object {
   const sortedCorners = [...rd.corners].sort(
     (a, b) => Math.abs(b.time_delta_s) - Math.abs(a.time_delta_s),
   );
+
+  // Build corner range lookup for chart sampling
+  const rangeMap = new Map<number, CornerRange>();
+  for (const cr of rd.cornerRanges ?? []) {
+    rangeMap.set(cr.id, cr);
+  }
 
   return {
     session: {
@@ -381,6 +470,13 @@ function buildDataPayload(rd: ReportData): object {
         entry.lean_phase_s = round3(cc.lean_phase_duration_s);
       if (cc.trail_braking_overlap_s != null)
         entry.trail_braking_overlap_s = round3(cc.trail_braking_overlap_s);
+
+      // Add sampled chart curves for this corner
+      const range = rangeMap.get(cc.id);
+      if (range && rd.analysisPoints?.length) {
+        const curves = sampleCornerCurves(rd.analysisPoints, range.startDist, range.endDist);
+        if (curves) entry.curves = curves;
+      }
 
       return entry;
     }),
@@ -483,7 +579,7 @@ export async function generateReport(
 
   const body: Record<string, unknown> = {
     contents: [{ parts: [{ text: userText }] }],
-    generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
+    generationConfig: { temperature: 0.7, maxOutputTokens: 65536 },
   };
 
   if (systemText) {

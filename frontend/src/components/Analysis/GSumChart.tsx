@@ -5,7 +5,7 @@ import {
 import type { AnalysisPoint } from '../../utils/analysis';
 import type { CornerRange } from './AnalysisChartWrapper';
 import { useTranslation } from '../../i18n/context';
-import { findKeyPoints, formatKeyPointValue } from '../../utils/keyPoints';
+import { findKeyPoints, resolveKeyPointPositions, formatKeyPointValue } from '../../utils/keyPoints';
 
 interface GSumChartProps {
     data: AnalysisPoint[];
@@ -29,10 +29,10 @@ const GSumChart: React.FC<GSumChartProps> = ({
     const { t } = useTranslation();
     const keyPoints = useMemo(() => {
         if (data.length < 10) return [];
-        return [
+        return resolveKeyPointPositions([
             ...findKeyPoints(data, 'anaGSum', '#ef4444'),
             ...findKeyPoints(data, 'refGSum', '#3b82f6'),
-        ];
+        ]);
     }, [data]);
 
     return (
@@ -124,7 +124,7 @@ const GSumChart: React.FC<GSumChartProps> = ({
                                 ifOverflow="extendDomain"
                                 label={{
                                     value: formatKeyPointValue(kp.value),
-                                    position: kp.type === 'max' ? 'top' : 'bottom',
+                                    position: kp.labelPosition || (kp.type === 'max' ? 'top' : 'bottom'),
                                     fill: kp.lineColor || (kp.type === 'max' ? '#22c55e' : '#ef4444'),
                                     fontSize: 9,
                                     fontWeight: 600,
