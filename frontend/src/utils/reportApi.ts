@@ -560,57 +560,26 @@ ${instructions}`;
 
 // ─── API Call ───
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
+import { apiFetch } from './apiClient';
 
 export async function generateReport(
   prompt: { system: string; user: string } | string,
   signal?: AbortSignal,
 ): Promise<string> {
-  if (!GEMINI_API_KEY) {
-    throw new Error('VITE_GEMINI_API_KEY not configured in .env');
-  }
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-
-  // Support both old string prompt and new structured prompt
-  const isStructured = typeof prompt !== 'string';
-  const systemText = isStructured ? prompt.system : undefined;
-  const userText = isStructured ? prompt.user : prompt;
-
-  const body: Record<string, unknown> = {
-    contents: [{ parts: [{ text: userText }] }],
-    generationConfig: { temperature: 0.7, maxOutputTokens: 65536 },
-  };
-
-  if (systemText) {
-    body.systemInstruction = { parts: [{ text: systemText }] };
-  }
-
-  const resp = await fetch(url, {
+  const resp = await apiFetch('/api/reports/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ prompt }),
     signal,
   });
 
   if (!resp.ok) {
     const err = await resp.text();
-    throw new Error(`Gemini API error ${resp.status}: ${err}`);
+    throw new Error(`Report API error ${resp.status}: ${err}`);
   }
 
   const result = await resp.json();
-  const parts = result.candidates?.[0]?.content?.parts;
-  if (!parts || parts.length === 0) {
-    throw new Error('Gemini returned empty response');
-  }
-  // Gemini 2.5 models may return thinking parts before the actual text.
-  // Find the last non-thought part with text content.
-  const textPart = [...parts].reverse().find((p: { text?: string; thought?: boolean }) => p.text && !p.thought)
-    ?? parts.find((p: { text?: string }) => p.text);
-  if (!textPart?.text) {
-    throw new Error('Gemini returned no text content');
-  }
-  return textPart.text;
+  return result.report;
 }
 
 // ─── Helpers ───

@@ -31,8 +31,9 @@ mise run sync-logic        # rsync analysis/ → backend/src/logic/
 VITE_API_URL=http://localhost:8787
 VITE_CORNER_API_URL=<lambda-url>
 VITE_GOOGLE_MAPS_API_KEY=<google-maps-key>
-VITE_GEMINI_API_KEY=<gemini-key>
 VITE_GOOGLE_CLIENT_ID=<google-oauth-client-id>
+VITE_KAKAO_CLIENT_ID=<kakao-rest-api-key>
+VITE_NAVER_CLIENT_ID=<naver-client-id>
 ```
 
 **Backend** (`backend/.dev.vars`):
@@ -42,6 +43,10 @@ LAMBDA_URL=<lambda-url>
 LAMBDA_TOKEN=<lambda-token>
 JWT_SECRET=<jwt-signing-secret>
 GOOGLE_CLIENT_ID=<google-oauth-client-id>
+KAKAO_CLIENT_ID=<kakao-rest-api-key>
+KAKAO_CLIENT_SECRET=<kakao-client-secret>
+NAVER_CLIENT_ID=<naver-client-id>
+NAVER_CLIENT_SECRET=<naver-client-secret>
 FRONTEND_URL=<frontend-origin-for-cors>
 ```
 
@@ -195,19 +200,30 @@ Cloudflare stack: Workers + Assets (frontend SPA), Workers Python (backend), D1 
 
 - `deploy.yml` — Frontend build + Backend deploy (Cloudflare)
 - `deploy-lambda.yml` — Lambda function deploy (AWS)
-- Required secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, AWS credentials, `JWT_SECRET`, `GOOGLE_CLIENT_ID`
-- Required variables: `VITE_API_URL`, `VITE_GOOGLE_MAPS_API_KEY`, `VITE_GOOGLE_CLIENT_ID`
+- Required secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, AWS credentials, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `KAKAO_CLIENT_ID`, `KAKAO_CLIENT_SECRET`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`
+- Required variables: `VITE_API_URL`, `VITE_GOOGLE_MAPS_API_KEY`, `VITE_GOOGLE_CLIENT_ID`, `VITE_KAKAO_CLIENT_ID`, `VITE_NAVER_CLIENT_ID`
 
 ### Authentication
 
-Google Sign-In (GSI) flow:
+Multi-provider OAuth (Google, Kakao, Naver):
+
+**Google Sign-In (GSI):**
 1. Frontend loads GSI script, renders Google Sign-In button via `AuthContext`
-2. On sign-in, frontend receives Google `id_token` and POSTs to `/api/auth/google/token`
+2. On sign-in, frontend receives Google `id_token` and POSTs to `/api/auth/google-token`
 3. Backend verifies `id_token` via Google's `tokeninfo` endpoint, upserts user in D1 `Users` table
-4. Backend creates HS256 JWT (7-day expiry) and returns it
-5. Frontend stores JWT in localStorage (`motolap-auth-token`) via `apiClient.ts`
-6. All subsequent API calls include `Authorization: Bearer <jwt>` header
-7. `sessionStorage.ts` supports user-scoped session listing via `user_id`
+
+**Kakao / Naver (Authorization Code Flow):**
+1. Frontend redirects to provider login page (Kakao: `kauth.kakao.com`, Naver: `nid.naver.com`)
+2. Provider redirects back with `?code=` parameter
+3. Frontend detects `code` param on mount, POSTs to `/api/auth/{kakao,naver}/token`
+4. Backend exchanges code for access_token, fetches user info, upserts user
+
+**Common (all providers):**
+- Backend `_upsert_user()` handles provider-specific ID columns (`google_id`, `kakao_id`, `naver_id`)
+- Backend creates HS256 JWT (7-day expiry) and returns it
+- Frontend stores JWT in localStorage (`motolap-auth-token`) via `apiClient.ts`
+- All subsequent API calls include `Authorization: Bearer <jwt>` header
+- `sessionStorage.ts` supports user-scoped session listing via `user_id`
 
 ### Admin & Tracks API
 

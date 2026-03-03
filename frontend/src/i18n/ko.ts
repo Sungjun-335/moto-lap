@@ -279,7 +279,9 @@ export const ko: Translations = {
     },
     auth: {
         signIn: '로그인',
-        signInGoogle: 'Google로 로그인',
+        signInGoogle: '구글 계정으로 로그인',
+        signInKakao: '카카오 계정으로 로그인',
+        signInNaver: '네이버 계정으로 로그인',
         signOut: '로그아웃',
     },
     admin: {

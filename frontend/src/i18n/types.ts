@@ -280,6 +280,8 @@ export interface Translations {
     auth: {
         signIn: string;
         signInGoogle: string;
+        signInKakao: string;
+        signInNaver: string;
         signOut: string;
     };
     admin: {

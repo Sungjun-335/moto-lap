@@ -33,6 +33,9 @@ interface AuthContextValue {
     authError: string | null;
     gsiReady: boolean;
     renderGoogleButton: (el: HTMLElement) => void;
+    loginWithGoogle: () => void;
+    loginWithKakao: () => void;
+    loginWithNaver: () => void;
     logout: () => void;
     clearError: () => void;
 }
@@ -45,11 +48,16 @@ const AuthContext = createContext<AuthContextValue>({
     authError: null,
     gsiReady: false,
     renderGoogleButton: () => {},
+    loginWithGoogle: () => {},
+    loginWithKakao: () => {},
+    loginWithNaver: () => {},
     logout: () => {},
     clearError: () => {},
 });
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+const KAKAO_CLIENT_ID = import.meta.env.VITE_KAKAO_CLIENT_ID || '';
+const NAVER_CLIENT_ID = import.meta.env.VITE_NAVER_CLIENT_ID || '';
 const API_URL = import.meta.env.VITE_API_URL || '';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -141,6 +149,65 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, [verifyToken]);
 
+    // Handle OAuth callback (Kakao/Naver redirect with ?code=)
+    const handleOAuthCallback = useCallback(async (provider: string, code: string, state: string | null) => {
+        try {
+            setIsLoading(true);
+            const redirectUri = window.location.origin + '/';
+            const resp = await fetch(`${API_URL}/api/auth/${provider}/token`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code, state, redirect_uri: redirectUri }),
+            });
+            if (resp.ok) {
+                const data = await resp.json();
+                setAuthToken(data.token);
+                setUser(data.user);
+                setAuthError(null);
+            } else {
+                const err = await resp.json().catch(() => ({ error: 'Login failed' }));
+                setAuthError(err.error || 'Login failed');
+            }
+        } catch (e) {
+            setAuthError(`Network error: ${e instanceof Error ? e.message : String(e)}`);
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
+
+    // Check for OAuth callback on mount
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get('code');
+        const state = params.get('state');
+        const provider = sessionStorage.getItem('oauth_provider');
+
+        if (code && provider && (provider === 'kakao' || provider === 'naver')) {
+            window.history.replaceState({}, '', window.location.pathname);
+            sessionStorage.removeItem('oauth_provider');
+            sessionStorage.removeItem('oauth_state');
+            handleOAuthCallback(provider, code, state);
+        }
+    }, [handleOAuthCallback]);
+
+    // Kakao login
+    const loginWithKakao = useCallback(() => {
+        const redirectUri = window.location.origin + '/';
+        const state = crypto.randomUUID();
+        sessionStorage.setItem('oauth_state', state);
+        sessionStorage.setItem('oauth_provider', 'kakao');
+        window.location.href = `https://kauth.kakao.com/oauth/authorize?client_id=${KAKAO_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}`;
+    }, []);
+
+    // Naver login
+    const loginWithNaver = useCallback(() => {
+        const redirectUri = window.location.origin + '/';
+        const state = crypto.randomUUID();
+        sessionStorage.setItem('oauth_state', state);
+        sessionStorage.setItem('oauth_provider', 'naver');
+        window.location.href = `https://nid.naver.com/oauth2.0/authorize?client_id=${NAVER_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}`;
+    }, []);
+
     // Render Google Sign-In button into a container element
     const renderGoogleButton = useCallback((el: HTMLElement) => {
         if (!window.google?.accounts?.id) return;
@@ -152,6 +219,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             text: 'signin_with',
             width: 200,
         });
+    }, []);
+
+    // Trigger Google One Tap prompt programmatically
+    const loginWithGoogle = useCallback(() => {
+        if (!window.google?.accounts?.id) return;
+        window.google.accounts.id.prompt();
     }, []);
 
     const logout = useCallback(() => {
@@ -176,9 +249,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         authError,
         gsiReady,
         renderGoogleButton,
+        loginWithGoogle,
+        loginWithKakao,
+        loginWithNaver,
         logout,
         clearError,
-    }), [user, isAdmin, isLoading, authError, gsiReady, renderGoogleButton, logout, clearError]);
+    }), [user, isAdmin, isLoading, authError, gsiReady, renderGoogleButton, loginWithGoogle, loginWithKakao, loginWithNaver, logout, clearError]);
 
     return (
         <AuthContext.Provider value={value}>

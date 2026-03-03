@@ -280,6 +280,9 @@ export const en: Translations = {
     auth: {
         signIn: 'Sign In',
         signInGoogle: 'Sign in with Google',
+        signInKakao: 'Sign in with Kakao',
+        signInNaver: 'Sign in with Naver',
+
         signOut: 'Sign Out',
     },
     admin: {

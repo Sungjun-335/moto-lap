@@ -162,16 +162,29 @@ def _make_cors_headers(request, env) -> Headers:
     ])
 
 
-async def _call_gemini(prompt: str, env: Any) -> str:
+async def _call_gemini(prompt, env: Any) -> str:
+    """Call Gemini API. prompt can be a str or dict {"system": "...", "user": "..."}."""
     api_key = _get_env_value(env, "GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY not configured")
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-    body = json.dumps({
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 4096},
-    })
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+
+    # Build request body supporting both plain string and structured prompt
+    if isinstance(prompt, dict):
+        system_text = prompt.get("system", "")
+        user_text = prompt.get("user", "")
+    else:
+        system_text = ""
+        user_text = str(prompt)
+
+    req_body: Dict[str, Any] = {
+        "contents": [{"parts": [{"text": user_text}]}],
+        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 65536},
+    }
+
+    if system_text:
+        req_body["systemInstruction"] = {"parts": [{"text": system_text}]}
 
     resp_headers = Headers.new([
         ("Content-Type", "application/json"),
@@ -179,21 +192,33 @@ async def _call_gemini(prompt: str, env: Any) -> str:
     response = await fetch(url, {
         "method": "POST",
         "headers": resp_headers,
-        "body": body,
+        "body": json.dumps(req_body),
     })
     if not response.ok:
         error_text = await response.text()
         raise RuntimeError(f"Gemini API error {response.status}: {error_text}")
 
-    result = await response.json()
-    text = result["candidates"][0]["content"]["parts"][0]["text"]
-    return text
+    resp_text = await response.text()
+    result = json.loads(str(resp_text))
+    parts = result["candidates"][0]["content"]["parts"]
+
+    # Filter out thinking parts (thought=true) and get the last text part
+    text_parts = [p for p in parts if p.get("text") and not p.get("thought")]
+    if not text_parts:
+        # Fallback: try any part with text
+        text_parts = [p for p in parts if p.get("text")]
+    if not text_parts:
+        raise RuntimeError("Gemini returned no text content")
+
+    return text_parts[-1]["text"]
 
 
 async def _generate_report(body: Dict[str, Any], env: Any) -> Dict[str, Any]:
     prompt = body.get("prompt")
-    if not prompt or not isinstance(prompt, str):
-        raise ValueError("Missing or invalid 'prompt' field")
+    if not prompt:
+        raise ValueError("Missing 'prompt' field")
+    if not isinstance(prompt, (str, dict)):
+        raise ValueError("'prompt' must be a string or {system, user} object")
 
     report_text = await _call_gemini(prompt, env)
     return {"report": report_text}
@@ -226,6 +251,33 @@ async def _call_lambda(csv_bytes: bytes, env: Any) -> Dict[str, Any]:
         raise RuntimeError(f"Lambda error {response.status}: {error_text}")
 
     return await response.json()
+
+
+# ─── Auth Helpers ───
+
+async def _upsert_user(env, provider: str, provider_id: str, email: str, name: str, picture: str) -> int:
+    """Upsert user by provider. Returns user ID."""
+    id_col = f"{provider}_id"
+
+    existing = await env.DB.prepare(
+        f"SELECT id FROM Users WHERE {id_col} = ?"
+    ).bind(provider_id).first()
+
+    if existing:
+        user_id = existing.id
+        await env.DB.prepare(
+            "UPDATE Users SET email = ?, name = ?, picture_url = ? WHERE id = ?"
+        ).bind(email, name, picture, user_id).run()
+    else:
+        # For non-Google providers, google_id (NOT NULL) gets '{provider}:{id}'
+        google_id_value = provider_id if provider == "google" else f"{provider}:{provider_id}"
+        res = await env.DB.prepare(
+            f"INSERT INTO Users (google_id, email, name, picture_url, provider, {id_col})"
+            f" VALUES (?, ?, ?, ?, ?, ?)"
+        ).bind(google_id_value, email, name, picture, provider, provider_id).run()
+        user_id = res.meta.last_row_id
+
+    return user_id
 
 
 # ─── Auth Handlers ───
@@ -266,19 +318,150 @@ async def _handle_auth_google_token(request, env, headers):
         return Response.new(json.dumps({"error": "Invalid token info"}), headers=headers, status=401)
 
     # Upsert user in D1
-    existing = await env.DB.prepare("SELECT id FROM Users WHERE google_id = ?").bind(google_id).first()
-    if existing:
-        user_id = existing.id
-        await env.DB.prepare(
-            "UPDATE Users SET email = ?, name = ?, picture_url = ? WHERE id = ?"
-        ).bind(email, name, picture, user_id).run()
-    else:
-        res = await env.DB.prepare(
-            "INSERT INTO Users (google_id, email, name, picture_url) VALUES (?, ?, ?, ?)"
-        ).bind(google_id, email, name, picture).run()
-        user_id = res.meta.last_row_id
+    user_id = await _upsert_user(env, "google", google_id, email, name, picture)
 
     # Create JWT
+    jwt_token = _create_jwt({
+        "sub": str(user_id),
+        "email": email,
+        "name": name,
+        "picture": picture,
+    }, jwt_secret)
+
+    return Response.new(json.dumps({
+        "token": jwt_token,
+        "user": {"id": str(user_id), "email": email, "name": name, "picture": picture},
+    }), headers=headers)
+
+
+async def _handle_auth_kakao_token(request, env, headers):
+    """Exchange Kakao authorization code for JWT."""
+    jwt_secret = _get_env_value(env, "JWT_SECRET")
+    kakao_client_id = _get_env_value(env, "KAKAO_CLIENT_ID")
+    kakao_client_secret = _get_env_value(env, "KAKAO_CLIENT_SECRET")
+    if not jwt_secret or not kakao_client_id:
+        return Response.new(json.dumps({"error": "Kakao auth not configured"}), headers=headers, status=500)
+
+    content_bytes = await request.bytes()
+    body = json.loads(bytes(content_bytes).decode("utf-8"))
+    code = body.get("code")
+    redirect_uri = body.get("redirect_uri")
+    if not code or not redirect_uri:
+        return Response.new(json.dumps({"error": "Missing code or redirect_uri"}), headers=headers, status=400)
+
+    # 1. Exchange code for access_token
+    token_body = f"grant_type=authorization_code&client_id={kakao_client_id}&redirect_uri={redirect_uri}&code={code}"
+    if kakao_client_secret:
+        token_body += f"&client_secret={kakao_client_secret}"
+
+    token_headers = Headers.new([("Content-Type", "application/x-www-form-urlencoded")])
+    token_resp = await fetch("https://kauth.kakao.com/oauth/token", {
+        "method": "POST",
+        "headers": token_headers,
+        "body": token_body,
+    })
+    if not token_resp.ok:
+        error_text = await token_resp.text()
+        return Response.new(json.dumps({"error": f"Kakao token exchange failed: {error_text}"}), headers=headers, status=401)
+
+    token_data = json.loads(str(await token_resp.text()))
+    access_token = token_data.get("access_token")
+    if not access_token:
+        return Response.new(json.dumps({"error": "No access_token from Kakao"}), headers=headers, status=401)
+
+    # 2. Get user info
+    user_headers = Headers.new([("Authorization", f"Bearer {access_token}")])
+    user_resp = await fetch("https://kapi.kakao.com/v2/user/me", {
+        "method": "GET",
+        "headers": user_headers,
+    })
+    if not user_resp.ok:
+        return Response.new(json.dumps({"error": "Failed to get Kakao user info"}), headers=headers, status=401)
+
+    user_data = json.loads(str(await user_resp.text()))
+    kakao_id = str(user_data.get("id", ""))
+    kakao_account = user_data.get("kakao_account") or {}
+    profile = kakao_account.get("profile") or {}
+    email = str(kakao_account.get("email", ""))
+    name = str(profile.get("nickname", ""))
+    picture = str(profile.get("profile_image_url", ""))
+
+    if not kakao_id:
+        return Response.new(json.dumps({"error": "Invalid Kakao user info"}), headers=headers, status=401)
+
+    # 3. Upsert + JWT
+    user_id = await _upsert_user(env, "kakao", kakao_id, email, name, picture)
+
+    jwt_token = _create_jwt({
+        "sub": str(user_id),
+        "email": email,
+        "name": name,
+        "picture": picture,
+    }, jwt_secret)
+
+    return Response.new(json.dumps({
+        "token": jwt_token,
+        "user": {"id": str(user_id), "email": email, "name": name, "picture": picture},
+    }), headers=headers)
+
+
+async def _handle_auth_naver_token(request, env, headers):
+    """Exchange Naver authorization code for JWT."""
+    jwt_secret = _get_env_value(env, "JWT_SECRET")
+    naver_client_id = _get_env_value(env, "NAVER_CLIENT_ID")
+    naver_client_secret = _get_env_value(env, "NAVER_CLIENT_SECRET")
+    if not jwt_secret or not naver_client_id or not naver_client_secret:
+        return Response.new(json.dumps({"error": "Naver auth not configured"}), headers=headers, status=500)
+
+    content_bytes = await request.bytes()
+    body = json.loads(bytes(content_bytes).decode("utf-8"))
+    code = body.get("code")
+    state = body.get("state")
+    if not code:
+        return Response.new(json.dumps({"error": "Missing code"}), headers=headers, status=400)
+
+    # 1. Exchange code for access_token
+    token_body = f"grant_type=authorization_code&client_id={naver_client_id}&client_secret={naver_client_secret}&code={code}"
+    if state:
+        token_body += f"&state={state}"
+
+    token_headers = Headers.new([("Content-Type", "application/x-www-form-urlencoded")])
+    token_resp = await fetch("https://nid.naver.com/oauth2.0/token", {
+        "method": "POST",
+        "headers": token_headers,
+        "body": token_body,
+    })
+    if not token_resp.ok:
+        error_text = await token_resp.text()
+        return Response.new(json.dumps({"error": f"Naver token exchange failed: {error_text}"}), headers=headers, status=401)
+
+    token_data = json.loads(str(await token_resp.text()))
+    access_token = token_data.get("access_token")
+    if not access_token:
+        return Response.new(json.dumps({"error": "No access_token from Naver"}), headers=headers, status=401)
+
+    # 2. Get user info
+    user_headers = Headers.new([("Authorization", f"Bearer {access_token}")])
+    user_resp = await fetch("https://openapi.naver.com/v1/nid/me", {
+        "method": "GET",
+        "headers": user_headers,
+    })
+    if not user_resp.ok:
+        return Response.new(json.dumps({"error": "Failed to get Naver user info"}), headers=headers, status=401)
+
+    user_data = json.loads(str(await user_resp.text()))
+    naver_response = user_data.get("response") or {}
+    naver_id = str(naver_response.get("id", ""))
+    email = str(naver_response.get("email", ""))
+    name = str(naver_response.get("name", ""))
+    picture = str(naver_response.get("profile_image", ""))
+
+    if not naver_id:
+        return Response.new(json.dumps({"error": "Invalid Naver user info"}), headers=headers, status=401)
+
+    # 3. Upsert + JWT
+    user_id = await _upsert_user(env, "naver", naver_id, email, name, picture)
+
     jwt_token = _create_jwt({
         "sub": str(user_id),
         "email": email,
@@ -341,6 +524,22 @@ async def on_fetch(request, env):
     if request.method == "POST" and "/api/auth/google-token" in url:
         try:
             return await _handle_auth_google_token(request, env, headers)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response.new(json.dumps({"error": str(e)}), headers=headers, status=500)
+
+    if request.method == "POST" and "/api/auth/kakao/token" in url:
+        try:
+            return await _handle_auth_kakao_token(request, env, headers)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response.new(json.dumps({"error": str(e)}), headers=headers, status=500)
+
+    if request.method == "POST" and "/api/auth/naver/token" in url:
+        try:
+            return await _handle_auth_naver_token(request, env, headers)
         except Exception as e:
             import traceback
             traceback.print_exc()

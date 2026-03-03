@@ -10,6 +10,9 @@ CREATE TABLE Users (
     email TEXT NOT NULL,
     name TEXT,
     picture_url TEXT,
+    provider TEXT NOT NULL DEFAULT 'google',
+    kakao_id TEXT UNIQUE,
+    naver_id TEXT UNIQUE,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
