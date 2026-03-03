@@ -3,6 +3,7 @@ import { Plus, Trash2, HardDrive, Loader2, Trophy, X, ArrowRight, ArrowLeft, Fil
 import type { SessionData, SessionSummary } from '../types';
 import { useTranslation } from '../i18n/context';
 import { formatLapTime } from '../utils/formatLapTime';
+import { pickBestLap } from '../utils/lapFilter';
 
 interface SessionListProps {
     sessions: SessionData[];
@@ -196,7 +197,7 @@ const SessionList: React.FC<SessionListProps> = ({
                                                 const id = isMemory ? item.session.id : item.summary.id;
                                                 const lapCount = isMemory ? item.session.laps.length : item.summary.lapCount;
                                                 const bestLap = isMemory
-                                                    ? (item.session.laps.length ? Math.min(...item.session.laps.map(l => l.duration)) : null)
+                                                    ? (pickBestLap(item.session.laps)?.duration ?? null)
                                                     : item.summary.bestLapTime;
                                                 const isLoading = !isMemory && loadingSessionId === item.summary.id;
                                                 const isAna = selectedAnaId != null && id === selectedAnaId;

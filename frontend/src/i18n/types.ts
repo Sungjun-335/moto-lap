@@ -132,10 +132,14 @@ export interface Translations {
         fullSession: string;
         cornerTimeComparison: string;
         noCornerData: string;
+        hideLapConfirm: string;
+        deleteLapTitle: string;
+        deleteLapMessage: string;
+        delete: string;
     };
     summary: {
         maxSpeed: string;
-        totalDistance: string;
+        avgLapTime: string;
         duration: string;
     };
     analysisDashboard: {
@@ -252,6 +256,12 @@ export interface Translations {
         yawRate: string;
         yawRateTitle: string;
         drivingEvents: string;
+        metricSpeed: string;
+        metricThrottle: string;
+        metricBrake: string;
+        metricLatG: string;
+        metricLonG: string;
+        metricRpm: string;
     };
     report: {
         title: string;
@@ -271,6 +281,9 @@ export interface Translations {
         signIn: string;
         signInGoogle: string;
         signOut: string;
+    };
+    admin: {
+        trackManager: string;
     };
     whatIf: {
         title: string;

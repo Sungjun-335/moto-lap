@@ -23,9 +23,12 @@ interface User {
     picture: string;
 }
 
+const ADMIN_EMAILS = ['yy95211@gmail.com'];
+
 interface AuthContextValue {
     user: User | null;
     isAuthenticated: boolean;
+    isAdmin: boolean;
     isLoading: boolean;
     authError: string | null;
     gsiReady: boolean;
@@ -37,6 +40,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue>({
     user: null,
     isAuthenticated: false,
+    isAdmin: false,
     isLoading: true,
     authError: null,
     gsiReady: false,
@@ -162,16 +166,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setAuthError(null);
     }, []);
 
+    const isAdmin = !!user?.email && ADMIN_EMAILS.includes(user.email);
+
     const value = useMemo(() => ({
         user,
         isAuthenticated: !!user,
+        isAdmin,
         isLoading,
         authError,
         gsiReady,
         renderGoogleButton,
         logout,
         clearError,
-    }), [user, isLoading, authError, gsiReady, renderGoogleButton, logout, clearError]);
+    }), [user, isAdmin, isLoading, authError, gsiReady, renderGoogleButton, logout, clearError]);
 
     return (
         <AuthContext.Provider value={value}>

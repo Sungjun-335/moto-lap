@@ -56,7 +56,7 @@ FRONTEND_URL=<frontend-origin-for-cors>
 
 ### Frontend Architecture
 
-**No router, no Redux.** View state is a simple state machine in `App.tsx`: `'landing' | 'list' | 'upload' | 'analysis'`. All session state lives in App-level `useState`. Google OAuth authentication via `AuthContext` wraps the app; `useAuth()` provides user info for user-scoped session storage.
+**No router, no Redux.** View state is a simple state machine in `App.tsx`: `'landing' | 'list' | 'upload' | 'analysis' | 'track-editor'`. All session state lives in App-level `useState`. Google OAuth authentication via `AuthContext` wraps the app; `useAuth()` provides user info and `isAdmin` flag for admin-only features (track editor). On mount, App fetches `/api/tracks` to replace bundled track data with DB-sourced data via `setTracks()`.
 
 **Data flow:**
 1. CSV upload → `aimParser.ts` (parse + metadata extraction) → `cornerDetection.ts` (client-side) → `SessionData`
@@ -65,7 +65,9 @@ FRONTEND_URL=<frontend-origin-for-cors>
 4. All chart state managed by `useAnalysisState` hook — lap selection, zoom/brush, hover, playback, corner ranges
 5. Sessions can be loaded from IndexedDB via `sessionReconstruct.ts` (re-runs lap segmentation, corner detection, metrics)
 
-**Chart system uses a registry pattern:** `chartRegistry.ts` declares all charts with `defaultVisible`. Two types: dedicated components (DeltaChart, ThrottleBrakeChart, etc.) and `FlexibleLineChart` for simple metrics. `AnalysisChartWrapper` provides common features (corner range overlays, drag state, zoom sync, double-click expand to modal). All time-series charts use `YAxis width={40}` and `margin={{ top: 5, right: 30, left: -20, bottom: 0 }}` for X-axis alignment.
+**Chart system uses a registry pattern:** `chartRegistry.ts` declares all charts with `defaultVisible`. Two types: dedicated components (DeltaChart, ThrottleBrakeChart, etc.) and `FlexibleLineChart` for simple metrics. `AnalysisChartWrapper` provides common features (corner range overlays, drag state, zoom sync, double-click expand to modal). All time-series charts use `YAxis width={40}` and `margin={{ top: 5, right: 30, left: -20, bottom: 0 }}` for X-axis alignment. Overview `Chart.tsx` supports multi-metric selection (speed/tps/brake/latG/lonG/rpm) with auto-detection of available metrics.
+
+**Lap management:** `Dashboard.tsx` manages `deletedLaps` (permanently removed from all views, outliers auto-deleted on load) and `hiddenLaps` (toggled visibility in charts). `Overview.tsx` provides lap sorting (time/index), hide/show, delete with confirmation, and ANA/REF lap assignment UI.
 
 **Key point labels:** `keyPoints.ts` provides a pipeline: `findCornerKeyPoints()` (per-corner max/min) or `findKeyPoints()` (prominence-based) -> `adjustKeyPointsForLines()` (avoid line overlap using other lines' Y values) -> `resolveKeyPointPositions()` (prevent nearby label collision).
 
@@ -113,8 +115,12 @@ FRONTEND_URL=<frontend-origin-for-cors>
 | `frontend/src/components/Analysis/AnalysisDashboard.tsx` | Main analysis view (map, G circle, charts, activity panel) |
 | `frontend/src/components/Analysis/ReferenceSelector.tsx` | REF lap source: current session / saved session / CSV upload |
 | `backend/src/entry.py` | Worker entry point — CORS proxy to Lambda, D1 integration, Gemini reports, JWT auth |
-| `backend/schema.sql` | D1 schema: Users, Sessions, Corners (driving_json), LapMetrics |
+| `backend/schema.sql` | D1 schema: Users, Tracks, Sessions, Corners (driving_json), LapMetrics |
 | `backend/migrations/002_add_users.sql` | D1 migration: add Users table |
+| `backend/migrations/003_add_tracks.sql` | D1 migration: add Tracks table |
+| `frontend/src/components/TrackEditor.tsx` | Track editor iframe wrapper (postMessage navigation) |
+| `frontend/public/track-editor.html` | Leaflet-based track editor (tile selector, corner cards, DB load/save) |
+| `frontend/src/components/Analysis/ReportCharts.tsx` | AI report inline charts (speed overlay + corner delta bars) |
 
 ### Formula Metrics Pipeline
 
@@ -167,6 +173,7 @@ preprocess.apply(df)
 
 **DB 테이블:**
 - `Users` — Google OAuth 사용자 (google_id, email, name, picture_url)
+- `Tracks` — 트랙/서킷 정의 (centerline, corners, boundaries, editor_data JSON)
 - `Sessions` — user_id FK로 Users 연결
 - `LapMetrics` — 랩별 BRK/CRN/TPS/CST 시간·비율·거리 + max_lean + g_sum
 - `Corners.driving_json` — driving dict 전체 JSON 저장
@@ -202,6 +209,16 @@ Google Sign-In (GSI) flow:
 6. All subsequent API calls include `Authorization: Bearer <jwt>` header
 7. `sessionStorage.ts` supports user-scoped session listing via `user_id`
 
+### Admin & Tracks API
+
+Admin check uses email whitelist (`ADMIN_EMAILS` in both `AuthContext.tsx` and `backend/src/entry.py`).
+
+- `GET /api/tracks` — public, returns all tracks from D1 Tracks table (JSON fields parsed)
+- `PUT /api/tracks/:id` — admin-only, upserts track data (centerline, corners, boundaries, editorData)
+- Frontend `setTracks()` replaces bundled track data with API response at mount time
+- Track editor (`track-editor.html`) is a standalone Leaflet app loaded in iframe, communicates via `postMessage`
+- Tile sources: ArcGIS Satellite, Google Satellite, OpenStreetMap, CartoDB Dark/Light, Stamen Toner
+
 ## Progress Log
 
 ### 2026-03-01
@@ -214,3 +231,12 @@ Google Sign-In (GSI) flow:
 - Overview best lap comparison grid
 - Chart.tsx lap hover highlight + max/min speed labels
 - AI Report prompt improvements (curves data, G-Sum explanation, distance-based coaching)
+- **Track management system**: D1 Tracks table + migration, GET/PUT API endpoints, admin auth
+- **Track editor** (track-editor.html): Leaflet map with 6 tile sources, corner cards, inline distance edit, DB load/save, home button (postMessage)
+- TrackEditor.tsx iframe wrapper + App.tsx 'track-editor' view state
+- Admin role system (isAdmin via email whitelist in AuthContext + backend)
+- Runtime track data: `setTracks()` replaces bundled data with API fetch on mount
+- Lap management: delete (with auto-outlier removal) + hide/show toggle in Dashboard/Overview
+- Chart.tsx multi-metric selector (speed/tps/brake/latG/lonG/rpm) with available metrics auto-detection
+- SummaryCards: "총 거리" replaced with "평균 랩타임", duration format improved
+- ReportCharts.tsx: speed overlay + corner delta bar chart inline in AI report modal

@@ -108,7 +108,7 @@ const DeltaChart: React.FC<DeltaChartProps> = ({
                             contentStyle={{ backgroundColor: '#18181b', borderColor: '#333', fontSize: '12px' }}
                             itemStyle={{ color: '#ccc' }}
                             labelFormatter={(label) => `Dist: ${(label / 1000).toFixed(3)}km`}
-                            formatter={(value: number) => [value.toFixed(3) + 's', 'Delta']}
+                            formatter={(value: any) => [Number(value).toFixed(3) + 's', 'Delta']}
                         />
                         <ReferenceLine y={0} stroke="#666" />
 

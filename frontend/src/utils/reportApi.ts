@@ -598,8 +598,19 @@ export async function generateReport(
     throw new Error(`Gemini API error ${resp.status}: ${err}`);
   }
 
-  const data = await resp.json();
-  return data.candidates[0].content.parts[0].text;
+  const result = await resp.json();
+  const parts = result.candidates?.[0]?.content?.parts;
+  if (!parts || parts.length === 0) {
+    throw new Error('Gemini returned empty response');
+  }
+  // Gemini 2.5 models may return thinking parts before the actual text.
+  // Find the last non-thought part with text content.
+  const textPart = [...parts].reverse().find((p: { text?: string; thought?: boolean }) => p.text && !p.thought)
+    ?? parts.find((p: { text?: string }) => p.text);
+  if (!textPart?.text) {
+    throw new Error('Gemini returned no text content');
+  }
+  return textPart.text;
 }
 
 // ─── Helpers ───

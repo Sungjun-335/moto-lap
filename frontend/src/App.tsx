@@ -3,12 +3,15 @@ import Dashboard from './components/Dashboard';
 import FileUpload from './components/FileUpload';
 import Landing from './components/Landing';
 import SessionList from './components/SessionList';
+import TrackEditor from './components/TrackEditor';
 import type { SessionData, SessionSummary } from './types';
 import { saveSession, listSessions, loadSession, deleteSession } from './utils/sessionStorage';
 import { reconstructSession } from './utils/sessionReconstruct';
 import { useAuth } from './auth/AuthContext';
+import { apiFetch } from './utils/apiClient';
+import { setTracks } from './data/tracks';
 
-type ViewState = 'landing' | 'list' | 'upload' | 'analysis';
+type ViewState = 'landing' | 'list' | 'upload' | 'analysis' | 'track-editor';
 
 function App() {
   const { user } = useAuth();
@@ -18,6 +21,14 @@ function App() {
   const [refSession, setRefSession] = useState<SessionData | null>(null);
   const [savedSessions, setSavedSessions] = useState<SessionSummary[]>([]);
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
+
+  // Load tracks from API on mount (falls back to bundled data)
+  useEffect(() => {
+    apiFetch('/api/tracks')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.tracks) setTracks(data.tracks); })
+      .catch(() => {});
+  }, []);
 
   // Load saved session list on mount and when user changes
   useEffect(() => {
@@ -119,6 +130,7 @@ function App() {
         <Landing
           onStart={() => setView('upload')}
           onSeeSessions={() => setView('list')}
+          onTrackEditor={() => setView('track-editor')}
           savedSessionCount={savedSessions.length}
         />
       )}
@@ -144,6 +156,10 @@ function App() {
           onBatchLoaded={handleBatchLoaded}
           onCancel={() => setView(sessions.length || savedSessions.length ? 'list' : 'landing')}
         />
+      )}
+
+      {view === 'track-editor' && (
+        <TrackEditor onBack={() => setView('landing')} />
       )}
 
       {view === 'analysis' && currentSession && (

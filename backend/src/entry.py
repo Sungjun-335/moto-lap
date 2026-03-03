@@ -66,6 +66,18 @@ async def _get_user_from_request(request, env) -> Optional[dict]:
     return _verify_jwt(token, jwt_secret)
 
 
+# ─── Admin Check ───
+
+ADMIN_EMAILS = ['yy95211@gmail.com']
+
+
+async def _require_admin(request, env) -> Optional[dict]:
+    user = await _get_user_from_request(request, env)
+    if not user or user.get("email") not in ADMIN_EMAILS:
+        return None
+    return user
+
+
 # ─── Existing Helpers ───
 
 def _flatten_driving(driving: dict) -> dict:
@@ -144,7 +156,7 @@ def _make_cors_headers(request, env) -> Headers:
 
     return Headers.new([
         ("Access-Control-Allow-Origin", allow_origin),
-        ("Access-Control-Allow-Methods", "GET, POST, OPTIONS"),
+        ("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS"),
         ("Access-Control-Allow-Headers", "Content-Type, Authorization"),
         ("Access-Control-Allow-Credentials", "true"),
     ])
@@ -340,6 +352,85 @@ async def on_fetch(request, env):
     # --- Session list (authenticated) ---
     if request.method == "GET" and "/api/sessions" in url:
         return await _handle_get_sessions(request, env, headers)
+
+    # --- Tracks API ---
+    if request.method == "GET" and "/api/tracks" in url and "/api/training-data" not in url:
+        try:
+            result = await env.DB.prepare(
+                "SELECT id, name, short_name, country, location_lat, location_lon,"
+                " total_length, direction, centerline_json, corners_json,"
+                " boundaries_json, editor_data_json, updated_at"
+                " FROM Tracks ORDER BY name"
+            ).all()
+
+            tracks = []
+            for row in result.results:
+                track = {
+                    "id": row.id,
+                    "name": row.name,
+                    "shortName": row.short_name,
+                    "country": row.country,
+                    "location": {"lat": row.location_lat, "lon": row.location_lon},
+                    "totalLength": row.total_length,
+                    "direction": row.direction,
+                    "centerline": json.loads(row.centerline_json),
+                    "corners": json.loads(row.corners_json),
+                }
+                if row.boundaries_json:
+                    track["boundaries"] = json.loads(row.boundaries_json)
+                if row.editor_data_json:
+                    track["editorData"] = json.loads(row.editor_data_json)
+                tracks.append(track)
+
+            return Response.new(json.dumps({"tracks": tracks}), headers=headers)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response.new(json.dumps({"error": str(e)}), headers=headers, status=500)
+
+    if request.method == "PUT" and "/api/tracks/" in url:
+        try:
+            admin = await _require_admin(request, env)
+            if not admin:
+                return Response.new(json.dumps({"error": "Forbidden"}), headers=headers, status=403)
+
+            # Extract track ID from URL: /api/tracks/{id}
+            track_id = url.split("/api/tracks/")[1].split("?")[0].split("/")[0]
+
+            content_bytes = await request.bytes()
+            body = json.loads(bytes(content_bytes).decode("utf-8"))
+
+            location = body.get("location", {})
+            boundaries = body.get("boundaries")
+            editor_data = body.get("editorData")
+
+            await env.DB.prepare(
+                "INSERT OR REPLACE INTO Tracks"
+                " (id, name, short_name, country, location_lat, location_lon,"
+                "  total_length, direction, centerline_json, corners_json,"
+                "  boundaries_json, editor_data_json, updated_at, updated_by)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)"
+            ).bind(
+                track_id,
+                body.get("name", ""),
+                body.get("shortName", ""),
+                body.get("country", ""),
+                location.get("lat", 0),
+                location.get("lon", 0),
+                body.get("totalLength", 0),
+                body.get("direction", ""),
+                json.dumps(body.get("centerline", [])),
+                json.dumps(body.get("corners", [])),
+                json.dumps(boundaries) if boundaries else None,
+                json.dumps(editor_data) if editor_data else None,
+                int(admin["sub"]),
+            ).run()
+
+            return Response.new(json.dumps({"ok": True, "id": track_id}), headers=headers)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response.new(json.dumps({"error": str(e)}), headers=headers, status=500)
 
     # --- Training data export ---
     if request.method == "GET" and "/api/training-data" in url:

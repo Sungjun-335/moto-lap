@@ -1,5 +1,6 @@
 import { openDB, type IDBPDatabase } from 'idb';
 import type { SessionData, StoredSession, SessionSummary } from '../types';
+import { pickBestLap } from './lapFilter';
 
 const DB_NAME = 'motolap-sessions';
 const DB_VERSION = 2;
@@ -29,7 +30,7 @@ function getDB() {
 export async function saveSession(session: SessionData, userId?: string): Promise<string> {
     const id = session.id || crypto.randomUUID();
     const bestLapTime = session.laps?.length
-        ? Math.min(...session.laps.map(l => l.duration))
+        ? pickBestLap(session.laps)?.duration
         : undefined;
     const stored: StoredSession = {
         id,

@@ -10,19 +10,23 @@ import {
   FileUp,
   Map,
   HardDrive,
+  Settings,
 } from 'lucide-react';
 import { useTranslation } from '../i18n/context';
 import { LanguageToggle } from '../i18n/context';
+import { useAuth } from '../auth/AuthContext';
 import UserMenu from './UserMenu';
 
 interface LandingProps {
   onStart: () => void;
   onSeeSessions: () => void;
+  onTrackEditor: () => void;
   savedSessionCount?: number;
 }
 
-const Landing: React.FC<LandingProps> = ({ onStart, onSeeSessions, savedSessionCount = 0 }) => {
+const Landing: React.FC<LandingProps> = ({ onStart, onSeeSessions, onTrackEditor, savedSessionCount = 0 }) => {
   const { t } = useTranslation();
+  const { isAdmin } = useAuth();
 
   const features = useMemo(() => [
     {
@@ -91,6 +95,15 @@ const Landing: React.FC<LandingProps> = ({ onStart, onSeeSessions, savedSessionC
           <div className="flex items-center gap-3">
             <UserMenu />
             <LanguageToggle />
+            {isAdmin && (
+              <button
+                onClick={onTrackEditor}
+                className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-200 transition hover:border-amber-400/50 hover:bg-amber-500/20"
+              >
+                <Settings className="h-3.5 w-3.5" />
+                {t.admin.trackManager}
+              </button>
+            )}
             {savedSessionCount > 0 && (
               <button
                 onClick={onSeeSessions}

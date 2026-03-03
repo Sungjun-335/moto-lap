@@ -60,9 +60,9 @@ jobs:
         working-directory: frontend
         run: npm run build
         env:
-          # If defined in GitHub Variables, use vars. If Secrets, use secrets.
-          # Here assuming Secrets for simplicity, or vars if user prefers.
-          VITE_API_URL: ${{ vars.VITE_API_URL || secrets.VITE_API_URL }}
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_GOOGLE_MAPS_API_KEY: ${{ vars.VITE_GOOGLE_MAPS_API_KEY }}
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
 
       - name: Deploy Worker (Assets)
         working-directory: frontend

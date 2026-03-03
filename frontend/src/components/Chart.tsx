@@ -10,14 +10,28 @@ import {
     ReferenceLine,
     Label
 } from 'recharts';
-import type { SessionData } from '../types';
+import type { SessionData, LapData } from '../types';
 import { downsample } from '../utils/downsample';
 import { useTranslation } from '../i18n/context';
 import { formatLapTime } from '../utils/formatLapTime';
 
+export type ChartMetric = 'speed' | 'tps' | 'brake' | 'latG' | 'lonG' | 'rpm';
+
+const METRIC_CONFIG: Record<ChartMetric, { field: keyof LapData; unit: string; decimals: number }> = {
+    speed: { field: 'speed', unit: 'km/h', decimals: 1 },
+    tps: { field: 'tps', unit: '%', decimals: 0 },
+    brake: { field: 'brake', unit: '', decimals: 0 },
+    latG: { field: 'latG', unit: 'G', decimals: 2 },
+    lonG: { field: 'lonG', unit: 'G', decimals: 2 },
+    rpm: { field: 'rpm', unit: 'rpm', decimals: 0 },
+};
+
 interface ChartProps {
     data: SessionData;
     selectedLapIndex?: number | 'all';
+    hiddenLaps?: Set<number>;
+    onRemoveLap?: (lapIndex: number) => void;
+    onDeleteLap?: (lapIndex: number) => void;
 }
 
 const LAP_COLORS = [
@@ -31,10 +45,34 @@ interface LapChartData {
     [key: string]: number;
 }
 
-const Chart: React.FC<ChartProps> = ({ data, selectedLapIndex = 'all' }) => {
+const Chart: React.FC<ChartProps> = ({ data, selectedLapIndex = 'all', hiddenLaps, onRemoveLap, onDeleteLap }) => {
     const { t } = useTranslation();
     const [hoveredLapKey, setHoveredLapKey] = useState<string | null>(null);
+    const [metric, setMetric] = useState<ChartMetric>('speed');
+    const [deleteConfirmLap, setDeleteConfirmLap] = useState<number | null>(null);
     const chartContainerRef = useRef<HTMLDivElement>(null);
+
+    const config = METRIC_CONFIG[metric];
+
+    const metricLabelMap: Record<ChartMetric, string> = {
+        speed: t.charts.metricSpeed,
+        tps: t.charts.metricThrottle,
+        brake: t.charts.metricBrake,
+        latG: t.charts.metricLatG,
+        lonG: t.charts.metricLonG,
+        rpm: t.charts.metricRpm,
+    };
+
+    // Check which metrics have data
+    const availableMetrics = useMemo(() => {
+        const all: ChartMetric[] = ['speed', 'tps', 'brake', 'latG', 'lonG', 'rpm'];
+        return all.filter(m => {
+            const field = METRIC_CONFIG[m].field;
+            return data.laps.some(lap =>
+                lap.dataPoints.some(p => (p[field] as number) !== 0)
+            );
+        });
+    }, [data.laps]);
 
     // Map lap index → { duration, color }
     const lapInfoMap = useMemo(() => {
@@ -45,21 +83,28 @@ const Chart: React.FC<ChartProps> = ({ data, selectedLapIndex = 'all' }) => {
         return map;
     }, [data.laps]);
 
+    // Filter visible laps
+    const visibleLaps = useMemo(() => {
+        if (!hiddenLaps?.size) return data.laps;
+        return data.laps.filter(lap => !hiddenLaps.has(lap.index));
+    }, [data.laps, hiddenLaps]);
+
     // Build merged dataset
     const chartData = useMemo(() => {
-        const laps = data.laps;
+        const laps = visibleLaps;
         if (!laps.length) return [] as LapChartData[];
 
-        const lapDataSets: { key: string; points: { distance: number; speed: number }[] }[] = [];
+        const field = config.field;
+        const lapDataSets: { key: string; points: { distance: number; value: number }[] }[] = [];
         for (const lap of laps) {
             const pts = lap.dataPoints;
             if (!pts.length) continue;
             const startDist = pts[0].distance;
             const normalized = downsample(pts, 500).map(p => ({
                 distance: Math.round((p.distance - startDist) * 10000) / 10000,
-                speed: p.speed,
+                value: p[field] as number,
             }));
-            lapDataSets.push({ key: `speed_L${lap.index}`, points: normalized });
+            lapDataSets.push({ key: `${metric}_L${lap.index}`, points: normalized });
         }
 
         if (!lapDataSets.length) return [];
@@ -67,7 +112,7 @@ const Chart: React.FC<ChartProps> = ({ data, selectedLapIndex = 'all' }) => {
         const refSet = lapDataSets.reduce((a, b) => a.points.length >= b.points.length ? a : b);
         const merged: LapChartData[] = refSet.points.map(p => {
             const row: LapChartData = { distance: p.distance };
-            row[refSet.key] = p.speed;
+            row[refSet.key] = p.value;
             return row;
         });
 
@@ -81,53 +126,49 @@ const Chart: React.FC<ChartProps> = ({ data, selectedLapIndex = 'all' }) => {
                 const p2 = ls.points[idx + 1];
                 if (!p1 || !p2) continue;
                 if (p1.distance === p2.distance) {
-                    row[ls.key] = p1.speed;
+                    row[ls.key] = p1.value;
                 } else {
                     const ratio = (d - p1.distance) / (p2.distance - p1.distance);
-                    row[ls.key] = p1.speed + (p2.speed - p1.speed) * Math.max(0, Math.min(1, ratio));
+                    row[ls.key] = p1.value + (p2.value - p1.value) * Math.max(0, Math.min(1, ratio));
                 }
             }
         }
 
         return merged;
-    }, [data.laps]);
+    }, [visibleLaps, metric, config.field]);
 
-    // Compute max/min speed
-    const { maxSpeed, minSpeed } = useMemo(() => {
+    // Compute max/min value
+    const { maxVal, minVal } = useMemo(() => {
         let max = -Infinity;
         let min = Infinity;
-        const targetLaps = selectedLapIndex === 'all' ? data.laps : data.laps.filter(l => l.index === selectedLapIndex);
+        const field = config.field;
+        const targetLaps = selectedLapIndex === 'all' ? visibleLaps : visibleLaps.filter(l => l.index === selectedLapIndex);
         for (const lap of targetLaps) {
             for (const p of lap.dataPoints) {
-                if (p.speed > max) max = p.speed;
-                if (p.speed < min) min = p.speed;
+                const v = p[field] as number;
+                if (v > max) max = v;
+                if (v < min) min = v;
             }
         }
-        return { maxSpeed: max === -Infinity ? 0 : max, minSpeed: min === Infinity ? 0 : min };
-    }, [data.laps, selectedLapIndex]);
+        return { maxVal: max === -Infinity ? 0 : max, minVal: min === Infinity ? 0 : min };
+    }, [visibleLaps, selectedLapIndex, config.field]);
+
+    const extractLapIndex = (dataKey: string) => parseInt(dataKey.split('_L').pop() || '0');
 
     // Find closest lap to mouse Y on chart mouse move
     const handleChartMouseMove = useCallback((state: any) => {
         if (!state?.activePayload?.length || !state.chartY) {
             return;
         }
-        // Use chartY and the YAxis scale to find which lap value is closest to cursor
         const payload = state.activePayload;
-
-        // Get chart area from the internal coordinate info
-        // activeCoordinate.y is the Y pixel position of the tooltip anchor
-        // We need to compare each lap's value pixel position with the mouse position
-        // Recharts gives us coordinate info we can use
         const yAxisMap = state.activePayload[0]?.payload;
         if (!yAxisMap) return;
 
-        // Get the Y axis scale from the chart container
         const container = chartContainerRef.current;
         if (!container) return;
         const svgEl = container.querySelector('.recharts-surface');
         if (!svgEl) return;
 
-        // Get Y-axis domain from the rendered ticks
         const yAxis = container.querySelector('.recharts-yAxis');
         if (!yAxis) return;
         const ticks = yAxis.querySelectorAll('.recharts-cartesian-axis-tick-value');
@@ -137,7 +178,6 @@ const Chart: React.FC<ChartProps> = ({ data, selectedLapIndex = 'all' }) => {
         const minTick = Math.min(...tickValues);
         const maxTick = Math.max(...tickValues);
 
-        // Get the plot area bounds
         const plotArea = container.querySelector('.recharts-cartesian-grid');
         if (!plotArea) return;
         const plotRect = plotArea.getBoundingClientRect();
@@ -146,13 +186,10 @@ const Chart: React.FC<ChartProps> = ({ data, selectedLapIndex = 'all' }) => {
         const plotBottom = plotRect.bottom - containerRect.top;
         const plotHeight = plotBottom - plotTop;
 
-        // Convert mouse Y (from container top) to value
-        // Recharts Y axis is inverted (top = max, bottom = min)
         const mouseY = state.chartY;
         const yRatio = (mouseY - plotTop) / plotHeight;
         const mouseValue = maxTick - yRatio * (maxTick - minTick);
 
-        // Find the closest lap
         let closestKey: string | null = null;
         let closestDist = Infinity;
         for (const entry of payload) {
@@ -171,27 +208,24 @@ const Chart: React.FC<ChartProps> = ({ data, selectedLapIndex = 'all' }) => {
         setHoveredLapKey(null);
     }, []);
 
-    // Custom tooltip - show only closest lap prominently, others dimmed
+    // Custom tooltip
     const renderTooltip = useCallback((props: any) => {
         if (!props.active || !props.payload?.length) return null;
 
         const entries = props.payload.filter((p: any) => p.value != null);
         if (!entries.length) return null;
 
-        // Determine the "focused" lap
         const focusKey = hoveredLapKey || entries[0]?.dataKey;
         const focusEntry = entries.find((e: any) => e.dataKey === focusKey) || entries[0];
-        const focusLapIdx = parseInt(focusEntry.dataKey.replace('speed_L', ''));
+        const focusLapIdx = extractLapIndex(focusEntry.dataKey);
         const focusInfo = lapInfoMap.get(focusLapIdx);
 
-        // Other laps sorted by speed descending
         const others = entries
             .filter((e: any) => e.dataKey !== focusEntry.dataKey)
             .sort((a: any, b: any) => b.value - a.value);
 
         return (
             <div className="bg-zinc-900/95 border border-zinc-600 rounded-lg shadow-2xl overflow-hidden min-w-[180px]">
-                {/* Focused lap - large */}
                 <div className="px-3 py-2 border-b border-zinc-700/50" style={{ borderLeftWidth: 3, borderLeftColor: focusEntry.color }}>
                     <div className="flex items-center justify-between gap-4">
                         <span className="text-sm font-mono font-bold text-white">
@@ -204,39 +238,37 @@ const Chart: React.FC<ChartProps> = ({ data, selectedLapIndex = 'all' }) => {
                         )}
                     </div>
                     <div className="text-lg font-mono font-bold text-white mt-0.5">
-                        {focusEntry.value.toFixed(1)} <span className="text-xs text-zinc-400">km/h</span>
+                        {focusEntry.value.toFixed(config.decimals)} <span className="text-xs text-zinc-400">{config.unit}</span>
                     </div>
                 </div>
-                {/* Other laps - compact */}
                 {others.length > 0 && (
                     <div className="px-3 py-1.5 space-y-0.5">
                         {others.map((entry: any) => {
-                            const lapIdx = parseInt(entry.dataKey.replace('speed_L', ''));
+                            const lapIdx = extractLapIndex(entry.dataKey);
                             const diff = entry.value - focusEntry.value;
                             return (
                                 <div key={entry.dataKey} className="flex items-center gap-1.5 text-[10px] font-mono text-zinc-500">
                                     <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: entry.color }} />
                                     <span className="w-5">L{lapIdx}</span>
-                                    <span className="w-12 text-right">{entry.value.toFixed(1)}</span>
+                                    <span className="w-12 text-right">{entry.value.toFixed(config.decimals)}</span>
                                     <span className={`ml-1 ${diff > 0 ? 'text-green-500/70' : diff < 0 ? 'text-red-500/70' : ''}`}>
-                                        {diff > 0 ? '+' : ''}{diff.toFixed(1)}
+                                        {diff > 0 ? '+' : ''}{diff.toFixed(config.decimals)}
                                     </span>
                                 </div>
                             );
                         })}
                     </div>
                 )}
-                {/* Distance */}
                 <div className="px-3 py-1 border-t border-zinc-800 text-[9px] text-zinc-600 font-mono">
                     {Number(props.label).toFixed(3)} km
                 </div>
             </div>
         );
-    }, [hoveredLapKey, lapInfoMap]);
+    }, [hoveredLapKey, lapInfoMap, config]);
 
     // Determine line styles
     const getLineStyle = useCallback((lapIndex: number) => {
-        const key = `speed_L${lapIndex}`;
+        const key = `${metric}_L${lapIndex}`;
         const isSelected = selectedLapIndex !== 'all' && lapIndex === selectedLapIndex;
         const hasSelection = selectedLapIndex !== 'all';
         const isHovered = hoveredLapKey === key;
@@ -266,12 +298,74 @@ const Chart: React.FC<ChartProps> = ({ data, selectedLapIndex = 'all' }) => {
         }
 
         return { strokeWidth, strokeOpacity };
-    }, [selectedLapIndex, hoveredLapKey]);
+    }, [selectedLapIndex, hoveredLapKey, metric]);
+
+    const handleDeleteConfirm = useCallback(() => {
+        if (deleteConfirmLap !== null && onDeleteLap) {
+            onDeleteLap(deleteConfirmLap);
+        }
+        setDeleteConfirmLap(null);
+    }, [deleteConfirmLap, onDeleteLap]);
 
     return (
-        <div className="w-full h-full p-4" ref={chartContainerRef}>
-            <h3 className="text-zinc-400 text-sm mb-4 font-medium">{t.charts.speedVsDistance}</h3>
-            <div className="w-full h-[90%]">
+        <div className="w-full h-full p-4 relative" ref={chartContainerRef}>
+            {/* Header: metric tabs */}
+            <div className="flex items-center gap-2 mb-2">
+                <div className="flex gap-1 flex-wrap">
+                    {availableMetrics.map(m => (
+                        <button
+                            key={m}
+                            onClick={() => setMetric(m)}
+                            className={`text-[10px] px-2 py-0.5 rounded font-medium transition-colors ${
+                                metric === m
+                                    ? 'bg-zinc-700 text-white'
+                                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+                            }`}
+                        >
+                            {metricLabelMap[m]}
+                        </button>
+                    ))}
+                </div>
+                <span className="text-zinc-600 text-[9px] ml-auto">
+                    vs {t.charts.distanceLabel}
+                </span>
+            </div>
+            {/* Lap legend */}
+            {onRemoveLap && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                    {data.laps.map((lap, i) => {
+                        const isHidden = hiddenLaps?.has(lap.index);
+                        const color = LAP_COLORS[i % LAP_COLORS.length];
+                        return (
+                            <button
+                                key={lap.index}
+                                onClick={() => onRemoveLap(lap.index)}
+                                onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    if (onDeleteLap && data.laps.length > 1) setDeleteConfirmLap(lap.index);
+                                }}
+                                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono transition-all border ${
+                                    isHidden
+                                        ? 'border-zinc-800 bg-zinc-900/50 text-zinc-600 opacity-50'
+                                        : 'border-zinc-700 bg-zinc-800/50 text-zinc-300 hover:bg-zinc-700/50'
+                                }`}
+                            >
+                                <span
+                                    className="w-2 h-2 rounded-full flex-shrink-0"
+                                    style={{ backgroundColor: isHidden ? '#52525b' : color }}
+                                />
+                                <span className={isHidden ? 'line-through' : ''}>
+                                    L{lap.index}
+                                </span>
+                                <span className={`text-zinc-500 ${isHidden ? 'line-through' : ''}`}>
+                                    {formatLapTime(lap.duration)}
+                                </span>
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+            <div className={`w-full ${onRemoveLap ? 'h-[calc(100%-80px)]' : 'h-[90%]'}`}>
                 <ResponsiveContainer width="100%" height="100%">
                     <LineChart
                         data={chartData}
@@ -290,20 +384,20 @@ const Chart: React.FC<ChartProps> = ({ data, selectedLapIndex = 'all' }) => {
                         />
                         <YAxis
                             tick={{ fill: '#71717a', fontSize: 12 }}
-                            label={{ value: t.charts.speedLabel, angle: -90, position: 'insideLeft', fill: '#71717a' }}
+                            label={{ value: `${metricLabelMap[metric]} (${config.unit})`, angle: -90, position: 'insideLeft', fill: '#71717a' }}
                         />
                         <Tooltip
                             content={renderTooltip}
                             allowEscapeViewBox={{ x: false, y: true }}
                         />
-                        <ReferenceLine y={maxSpeed} stroke="#22c55e" strokeDasharray="4 4" strokeOpacity={0.6}>
-                            <Label value={`MAX ${maxSpeed.toFixed(0)}`} position="right" fill="#22c55e" fontSize={11} />
+                        <ReferenceLine y={maxVal} stroke="#22c55e" strokeDasharray="4 4" strokeOpacity={0.6}>
+                            <Label value={`MAX ${maxVal.toFixed(config.decimals)}`} position="right" fill="#22c55e" fontSize={11} />
                         </ReferenceLine>
-                        <ReferenceLine y={minSpeed} stroke="#f59e0b" strokeDasharray="4 4" strokeOpacity={0.6}>
-                            <Label value={`MIN ${minSpeed.toFixed(0)}`} position="right" fill="#f59e0b" fontSize={11} />
+                        <ReferenceLine y={minVal} stroke="#f59e0b" strokeDasharray="4 4" strokeOpacity={0.6}>
+                            <Label value={`MIN ${minVal.toFixed(config.decimals)}`} position="right" fill="#f59e0b" fontSize={11} />
                         </ReferenceLine>
-                        {data.laps.map((lap, i) => {
-                            const key = `speed_L${lap.index}`;
+                        {visibleLaps.map((lap, i) => {
+                            const key = `${metric}_L${lap.index}`;
                             const { strokeWidth, strokeOpacity } = getLineStyle(lap.index);
                             const isActive = hoveredLapKey === key ||
                                 (selectedLapIndex !== 'all' && lap.index === selectedLapIndex) ||
@@ -327,6 +421,37 @@ const Chart: React.FC<ChartProps> = ({ data, selectedLapIndex = 'all' }) => {
                     </LineChart>
                 </ResponsiveContainer>
             </div>
+
+            {/* Delete confirmation dialog */}
+            {deleteConfirmLap !== null && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setDeleteConfirmLap(null)}>
+                    <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-5 shadow-2xl min-w-[280px]" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-sm font-bold text-zinc-200 mb-1">
+                            {t.overview.deleteLapTitle} — L{deleteConfirmLap}
+                        </h3>
+                        <p className="text-xs text-zinc-400 mb-1">
+                            {formatLapTime(lapInfoMap.get(deleteConfirmLap)?.duration ?? 0)}
+                        </p>
+                        <p className="text-xs text-zinc-500 mb-4">
+                            {t.overview.deleteLapMessage}
+                        </p>
+                        <div className="flex gap-2 justify-end">
+                            <button
+                                onClick={() => setDeleteConfirmLap(null)}
+                                className="px-3 py-1.5 text-xs text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
+                            >
+                                {t.common.cancel}
+                            </button>
+                            <button
+                                onClick={handleDeleteConfirm}
+                                className="px-3 py-1.5 text-xs text-red-400 hover:text-white bg-red-900/30 hover:bg-red-800/50 border border-red-800/50 rounded-lg transition-colors"
+                            >
+                                {t.overview.delete}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

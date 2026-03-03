@@ -27,6 +27,7 @@ function inlineMarkdown(text: string): string {
 }
 
 export function renderMarkdown(md: string): string {
+  if (!md) return '';
   const lines = md.split('\n');
   const out: string[] = [];
   let i = 0;

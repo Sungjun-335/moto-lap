@@ -244,13 +244,17 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
         if (!data.id) return;
         let cancelled = false;
         (async () => {
-            const ko = await loadReport(data.id!, refLapIndex, anaLapIndex, 'ko');
-            const en = await loadReport(data.id!, refLapIndex, anaLapIndex, 'en');
-            if (!cancelled) {
-                setHasSavedReport(!!(ko || en));
-                // Pre-populate memory cache
-                if (ko) reportCacheRef.current.set(getCacheKey('ko'), ko.report);
-                if (en) reportCacheRef.current.set(getCacheKey('en'), en.report);
+            try {
+                const ko = await loadReport(data.id!, refLapIndex, anaLapIndex, 'ko');
+                const en = await loadReport(data.id!, refLapIndex, anaLapIndex, 'en');
+                if (!cancelled) {
+                    setHasSavedReport(!!(ko || en));
+                    // Pre-populate memory cache
+                    if (ko) reportCacheRef.current.set(getCacheKey('ko'), ko.report);
+                    if (en) reportCacheRef.current.set(getCacheKey('en'), en.report);
+                }
+            } catch {
+                // IndexedDB may fail — ignore
             }
         })();
         return () => { cancelled = true; };
@@ -259,9 +263,9 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
     // Load all saved reports — refresh on mount, after generation, and when modal opens
     useEffect(() => {
         let cancelled = false;
-        listAllReports().then(reports => {
-            if (!cancelled) setAllSavedReports(reports);
-        });
+        listAllReports()
+            .then(reports => { if (!cancelled) setAllSavedReports(reports); })
+            .catch(() => {});
         return () => { cancelled = true; };
     }, [hasSavedReport, reportState.open]);
 
@@ -295,19 +299,23 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
 
     // Button click: memory cache → DB cache → confirm screen
     const handleGenerateReport = useCallback(async () => {
-        const cached = reportCacheRef.current.get(getCacheKey(reportLang));
-        if (cached) {
-            setReportState({ open: true, status: 'success', report: cached, error: '' });
-            return;
-        }
-        // Try loading from IndexedDB
-        if (data.id) {
-            const stored = await loadReport(data.id, refLapIndex, anaLapIndex, reportLang);
-            if (stored) {
-                reportCacheRef.current.set(getCacheKey(reportLang), stored.report);
-                setReportState({ open: true, status: 'success', report: stored.report, error: '' });
+        try {
+            const cached = reportCacheRef.current.get(getCacheKey(reportLang));
+            if (cached) {
+                setReportState({ open: true, status: 'success', report: cached, error: '' });
                 return;
             }
+            // Try loading from IndexedDB
+            if (data.id) {
+                const stored = await loadReport(data.id, refLapIndex, anaLapIndex, reportLang);
+                if (stored) {
+                    reportCacheRef.current.set(getCacheKey(reportLang), stored.report);
+                    setReportState({ open: true, status: 'success', report: stored.report, error: '' });
+                    return;
+                }
+            }
+        } catch {
+            // IndexedDB may fail — fall through to confirm screen
         }
         setReportState({ open: true, status: 'confirm', report: '', error: '' });
     }, [getCacheKey, reportLang, data.id, refLapIndex, anaLapIndex]);
@@ -333,13 +341,17 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
                 return;
             }
             // Try DB
-            if (data.id) {
-                const stored = await loadReport(data.id, refLapIndex, anaLapIndex, lang);
-                if (stored) {
-                    reportCacheRef.current.set(getCacheKey(lang), stored.report);
-                    setReportState({ open: true, status: 'success', report: stored.report, error: '' });
-                    return;
+            try {
+                if (data.id) {
+                    const stored = await loadReport(data.id, refLapIndex, anaLapIndex, lang);
+                    if (stored) {
+                        reportCacheRef.current.set(getCacheKey(lang), stored.report);
+                        setReportState({ open: true, status: 'success', report: stored.report, error: '' });
+                        return;
+                    }
                 }
+            } catch {
+                // IndexedDB may fail — fall through to confirm screen
             }
             setReportState({ open: true, status: 'confirm', report: '', error: '' });
         }
@@ -834,6 +846,12 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
                     reportLang={reportLang}
                     onLangChange={handleLangChange}
                     savedReports={allSavedReports}
+                    chartData={{
+                        data,
+                        viewData,
+                        refLapIndex,
+                        anaLapIndex,
+                    }}
                 />
             )}
         </div>

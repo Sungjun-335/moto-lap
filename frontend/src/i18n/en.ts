@@ -132,10 +132,14 @@ export const en: Translations = {
         fullSession: 'Full Session',
         cornerTimeComparison: 'Corner Time Comparison',
         noCornerData: 'No corner data available for selected laps.',
+        hideLapConfirm: 'Hide this lap from the chart?',
+        deleteLapTitle: 'Delete Lap',
+        deleteLapMessage: 'Are you sure you want to delete this lap? This cannot be undone.',
+        delete: 'Delete',
     },
     summary: {
         maxSpeed: 'Max Speed',
-        totalDistance: 'Total Distance',
+        avgLapTime: 'Avg Lap Time',
         duration: 'Duration',
     },
     analysisDashboard: {
@@ -252,6 +256,12 @@ export const en: Translations = {
         yawRate: 'Yaw Rate (GyroZ)',
         yawRateTitle: 'Yaw Rate (\u00b0/s)',
         drivingEvents: 'Driving Events',
+        metricSpeed: 'Speed',
+        metricThrottle: 'Throttle',
+        metricBrake: 'Brake',
+        metricLatG: 'Lat G',
+        metricLonG: 'Lon G',
+        metricRpm: 'RPM',
     },
     report: {
         title: 'AI Report',
@@ -271,6 +281,9 @@ export const en: Translations = {
         signIn: 'Sign In',
         signInGoogle: 'Sign in with Google',
         signOut: 'Sign Out',
+    },
+    admin: {
+        trackManager: 'Track Manager',
     },
     whatIf: {
         title: 'What-If Analysis',

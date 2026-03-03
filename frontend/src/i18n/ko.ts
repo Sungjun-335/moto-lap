@@ -132,11 +132,15 @@ export const ko: Translations = {
         fullSession: '\uc804\uccb4 \uc138\uc158',
         cornerTimeComparison: '\ucf54\ub108 \uc2dc\uac04 \ube44\uad50',
         noCornerData: '\uc120\ud0dd\ud55c \ub7a9\uc5d0 \ucf54\ub108 \ub370\uc774\ud130\uac00 \uc5c6\uc2b5\ub2c8\ub2e4.',
+        hideLapConfirm: '\uc774 \ub7a9\uc744 \ucc28\ud2b8\uc5d0\uc11c \uc228\uae30\uc2dc\uaca0\uc2b5\ub2c8\uae4c?',
+        deleteLapTitle: '랩 삭제',
+        deleteLapMessage: '이 랩을 삭제하시겠습니까? 되돌릴 수 없습니다.',
+        delete: '삭제',
     },
     summary: {
-        maxSpeed: '\ucd5c\uace0 \uc18d\ub3c4',
-        totalDistance: '\ucd1d \uac70\ub9ac',
-        duration: '\uc8fc\ud589 \uc2dc\uac04',
+        maxSpeed: '최고 속도',
+        avgLapTime: '평균 랩타임',
+        duration: '주행 시간',
     },
     analysisDashboard: {
         aiReport: 'AI \ub9ac\ud3ec\ud2b8',
@@ -252,6 +256,12 @@ export const ko: Translations = {
         yawRate: 'Yaw Rate (GyroZ)',
         yawRateTitle: 'Yaw Rate (\u00b0/s)',
         drivingEvents: 'Driving Events',
+        metricSpeed: '속도',
+        metricThrottle: '스로틀',
+        metricBrake: '브레이크',
+        metricLatG: '횡 G',
+        metricLonG: '종 G',
+        metricRpm: 'RPM',
     },
     report: {
         title: 'AI \ub9ac\ud3ec\ud2b8',
@@ -271,6 +281,9 @@ export const ko: Translations = {
         signIn: '로그인',
         signInGoogle: 'Google로 로그인',
         signOut: '로그아웃',
+    },
+    admin: {
+        trackManager: '트랙 관리',
     },
     whatIf: {
         title: 'What-If \ubd84\uc11d',

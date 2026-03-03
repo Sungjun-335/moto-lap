@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import type { SessionData, Lap } from '../types';
 import Overview from './Overview';
 import AnalysisDashboard from './Analysis/AnalysisDashboard';
@@ -25,20 +25,65 @@ const Dashboard: React.FC<DashboardProps> = ({ data, refSession, onReset }) => {
         data.metadata.trackId ? getTrackById(data.metadata.trackId) : null
     , [data.metadata.trackId]);
 
-    // Lifted overview state
-    const sortedByDuration = useMemo(() =>
-        [...data.laps].sort((a, b) => a.duration - b.duration)
-    , [data.laps]);
-    const outlierLapIndices = useMemo(() => getOutlierLapIndices(data.laps), [data.laps]);
-    const validLaps = useMemo(() => sortedByDuration.filter(l => !outlierLapIndices.has(l.index)), [sortedByDuration, outlierLapIndices]);
+    // Deleted laps (removed from all views) — auto-delete outliers on load
+    const [deletedLaps, setDeletedLaps] = useState<Set<number>>(() => getOutlierLapIndices(data.laps));
 
+    const effectiveData = useMemo(() => {
+        if (!deletedLaps.size) return data;
+        return {
+            ...data,
+            laps: data.laps.filter(lap => !deletedLaps.has(lap.index)),
+        };
+    }, [data, deletedLaps]);
+
+    // Derived lap lists from effectiveData
+    const sortedByDuration = useMemo(() =>
+        [...effectiveData.laps].sort((a, b) => a.duration - b.duration)
+    , [effectiveData.laps]);
+    const outlierLapIndices = useMemo(() => getOutlierLapIndices(effectiveData.laps), [effectiveData.laps]);
     const [selectedLapIndex, setSelectedLapIndex] = useState<number | 'all'>('all');
-    const [anaLapIdx, setAnaLapIdx] = useState<number>((validLaps[0] ?? sortedByDuration[0])?.index ?? 0);
-    const [refLapIdx, setRefLapIdx] = useState<number>((validLaps[1] ?? validLaps[0] ?? sortedByDuration[0])?.index ?? 0);
+    const [anaLapIdx, setAnaLapIdx] = useState<number>(() => {
+        const sorted = [...data.laps].sort((a, b) => a.duration - b.duration);
+        const outliers = getOutlierLapIndices(data.laps);
+        const valid = sorted.filter(l => !outliers.has(l.index));
+        return (valid[0] ?? sorted[0])?.index ?? 0;
+    });
+    const [refLapIdx, setRefLapIdx] = useState<number>(() => {
+        const sorted = [...data.laps].sort((a, b) => a.duration - b.duration);
+        const outliers = getOutlierLapIndices(data.laps);
+        const valid = sorted.filter(l => !outliers.has(l.index));
+        return (valid[1] ?? valid[0] ?? sorted[0])?.index ?? 0;
+    });
     const [externalRefLap, setExternalRefLap] = useState<Lap | null>(() => {
         if (!refSession?.laps?.length) return null;
         return pickBestLap(refSession.laps) ?? null;
     });
+
+    // Hidden laps (toggled visibility in chart, not deleted)
+    const [hiddenLaps, setHiddenLaps] = useState<Set<number>>(new Set());
+
+    const toggleLapVisibility = useCallback((lapIndex: number) => {
+        setHiddenLaps(prev => {
+            const next = new Set(prev);
+            if (next.has(lapIndex)) next.delete(lapIndex);
+            else next.add(lapIndex);
+            return next;
+        });
+    }, []);
+
+    const deleteLap = useCallback((lapIndex: number) => {
+        setDeletedLaps(prev => {
+            const next = new Set(prev);
+            next.add(lapIndex);
+            return next;
+        });
+        setHiddenLaps(prev => {
+            if (!prev.has(lapIndex)) return prev;
+            const next = new Set(prev);
+            next.delete(lapIndex);
+            return next;
+        });
+    }, []);
 
     const handleCornerNavigate = (cornerId: number) => {
         setInitialCornerId(cornerId);
@@ -106,7 +151,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, refSession, onReset }) => {
                                         }}
                                     >
                                         <option value="all">{t.overview.fullSession}</option>
-                                        {data.laps.map(lap => (
+                                        {effectiveData.laps.map(lap => (
                                             <option key={lap.index} value={lap.index}>
                                                 {outlierLapIndices.has(lap.index) ? '⚠ ' : ''}L{lap.index} ({formatLapTime(lap.duration)})
                                             </option>
@@ -124,7 +169,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, refSession, onReset }) => {
                                         value={anaLapIdx}
                                         onChange={(e) => setAnaLapIdx(Number(e.target.value))}
                                     >
-                                        {data.laps.map(lap => (
+                                        {effectiveData.laps.map(lap => (
                                             <option key={lap.index} value={lap.index}>
                                                 {outlierLapIndices.has(lap.index) ? '⚠ ' : ''}L{lap.index} ({formatLapTime(lap.duration)})
                                             </option>
@@ -159,7 +204,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, refSession, onReset }) => {
                 <div className="absolute inset-0 h-full w-full">
                     {mode === 'overview' ? (
                         <Overview
-                            data={data}
+                            data={effectiveData}
                             key="overview"
                             onCornerNavigate={handleCornerNavigate}
                             refSession={refSession}
@@ -168,10 +213,15 @@ const Dashboard: React.FC<DashboardProps> = ({ data, refSession, onReset }) => {
                             refLapIdx={refLapIdx}
                             externalRefLap={externalRefLap}
                             outlierLapIndices={outlierLapIndices}
+                            hiddenLaps={hiddenLaps}
+                            onToggleLap={toggleLapVisibility}
+                            onDeleteLap={deleteLap}
+                            onSetAnaLap={setAnaLapIdx}
+                            onSetRefLap={setRefLapIdx}
                         />
                     ) : (
                         <AnalysisDashboard
-                            data={data}
+                            data={effectiveData}
                             key="analysis"
                             onBack={onReset}
                             onSwitchToOverview={() => setMode('overview')}

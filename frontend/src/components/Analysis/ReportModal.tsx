@@ -3,6 +3,9 @@ import { X, Copy, Check, Loader2, AlertCircle, RefreshCw, Sparkles, History, Arr
 import { renderMarkdown, markdownStyles } from '../../utils/markdownRenderer';
 import { useTranslation } from '../../i18n/context';
 import type { StoredReport } from '../../utils/sessionStorage';
+import type { SessionData } from '../../types';
+import type { AnalysisPoint } from '../../utils/analysis';
+import ReportCharts from './ReportCharts';
 
 interface ReportModalProps {
   status: 'confirm' | 'loading' | 'error' | 'success';
@@ -14,11 +17,17 @@ interface ReportModalProps {
   reportLang: 'ko' | 'en';
   onLangChange: (lang: 'ko' | 'en') => void;
   savedReports?: StoredReport[];
+  chartData?: {
+    data: SessionData;
+    viewData: AnalysisPoint[];
+    refLapIndex: number;
+    anaLapIndex: number;
+  };
 }
 
 const ReportModal: React.FC<ReportModalProps> = ({
   status, report, error, onClose, onGenerate, onRegenerate,
-  reportLang, onLangChange, savedReports
+  reportLang, onLangChange, savedReports, chartData
 }) => {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
@@ -228,6 +237,14 @@ const ReportModal: React.FC<ReportModalProps> = ({
           {/* Viewing a past report */}
           {!showLog && isViewingPast && (
             <>
+              {chartData && (
+                <ReportCharts
+                  data={chartData.data}
+                  viewData={chartData.viewData}
+                  refLapIndex={viewingPastReport.refLapIndex}
+                  anaLapIndex={viewingPastReport.anaLapIndex}
+                />
+              )}
               <style>{markdownStyles}</style>
               <div
                 className="prose prose-invert max-w-none"
@@ -271,6 +288,14 @@ const ReportModal: React.FC<ReportModalProps> = ({
 
               {status === 'success' && (
                 <>
+                  {chartData && (
+                    <ReportCharts
+                      data={chartData.data}
+                      viewData={chartData.viewData}
+                      refLapIndex={chartData.refLapIndex}
+                      anaLapIndex={chartData.anaLapIndex}
+                    />
+                  )}
                   <style>{markdownStyles}</style>
                   <div
                     className="prose prose-invert max-w-none"
