@@ -334,6 +334,65 @@ async def _handle_auth_google_token(request, env, headers):
     }), headers=headers)
 
 
+async def _handle_auth_google_code(request, env, headers):
+    """Exchange Google authorization code for JWT (redirect flow)."""
+    jwt_secret = _get_env_value(env, "JWT_SECRET")
+    client_id = _get_env_value(env, "GOOGLE_CLIENT_ID")
+    client_secret = _get_env_value(env, "GOOGLE_CLIENT_SECRET")
+    if not jwt_secret or not client_id or not client_secret:
+        return Response.new(json.dumps({"error": "Google auth not configured"}), headers=headers, status=500)
+
+    content_bytes = await request.bytes()
+    body = json.loads(bytes(content_bytes).decode("utf-8"))
+    code = body.get("code")
+    redirect_uri = body.get("redirect_uri")
+    if not code or not redirect_uri:
+        return Response.new(json.dumps({"error": "Missing code or redirect_uri"}), headers=headers, status=400)
+
+    # Exchange code for tokens
+    token_body = f"grant_type=authorization_code&client_id={client_id}&client_secret={client_secret}&redirect_uri={redirect_uri}&code={code}"
+    token_headers = Headers.new([("Content-Type", "application/x-www-form-urlencoded")])
+    token_resp = await fetch("https://oauth2.googleapis.com/token", {
+        "method": "POST",
+        "headers": token_headers,
+        "body": token_body,
+    })
+    if not token_resp.ok:
+        error_text = await token_resp.text()
+        return Response.new(json.dumps({"error": f"Google token exchange failed: {error_text}"}), headers=headers, status=401)
+
+    token_data = json.loads(str(await token_resp.text()))
+    id_token = token_data.get("id_token")
+    if not id_token:
+        return Response.new(json.dumps({"error": "No id_token from Google"}), headers=headers, status=401)
+
+    # Decode id_token payload (verified by server-side code exchange)
+    parts = id_token.split(".")
+    payload = json.loads(_b64url_decode(parts[1]))
+
+    google_id = str(payload.get("sub", ""))
+    email = str(payload.get("email", ""))
+    name = str(payload.get("name", ""))
+    picture = str(payload.get("picture", ""))
+
+    if not google_id or not email:
+        return Response.new(json.dumps({"error": "Invalid Google token"}), headers=headers, status=401)
+
+    user_id = await _upsert_user(env, "google", google_id, email, name, picture)
+
+    jwt_token = _create_jwt({
+        "sub": str(user_id),
+        "email": email,
+        "name": name,
+        "picture": picture,
+    }, jwt_secret)
+
+    return Response.new(json.dumps({
+        "token": jwt_token,
+        "user": {"id": str(user_id), "email": email, "name": name, "picture": picture},
+    }), headers=headers)
+
+
 async def _handle_auth_kakao_token(request, env, headers):
     """Exchange Kakao authorization code for JWT."""
     jwt_secret = _get_env_value(env, "JWT_SECRET")
@@ -524,6 +583,14 @@ async def on_fetch(request, env):
     if request.method == "POST" and "/api/auth/google-token" in url:
         try:
             return await _handle_auth_google_token(request, env, headers)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response.new(json.dumps({"error": str(e)}), headers=headers, status=500)
+
+    if request.method == "POST" and "/api/auth/google/token" in url:
+        try:
+            return await _handle_auth_google_code(request, env, headers)
         except Exception as e:
             import traceback
             traceback.print_exc()
