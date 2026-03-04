@@ -29,11 +29,11 @@ const AuthContext = createContext<AuthContextValue>({
     isAdmin: false,
     isLoading: true,
     authError: null,
-    loginWithGoogle: () => {},
-    loginWithKakao: () => {},
-    loginWithNaver: () => {},
-    logout: () => {},
-    clearError: () => {},
+    loginWithGoogle: () => { },
+    loginWithKakao: () => { },
+    loginWithNaver: () => { },
+    logout: () => { },
+    clearError: () => { },
 });
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
@@ -103,40 +103,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const params = new URLSearchParams(window.location.search);
         const code = params.get('code');
         const state = params.get('state');
-        const provider = sessionStorage.getItem('oauth_provider');
+        const provider = localStorage.getItem('oauth_provider');
 
         if (code && provider && (provider === 'google' || provider === 'kakao' || provider === 'naver')) {
             window.history.replaceState({}, '', window.location.pathname);
-            sessionStorage.removeItem('oauth_provider');
-            sessionStorage.removeItem('oauth_state');
+            localStorage.removeItem('oauth_provider');
+            localStorage.removeItem('oauth_state');
             handleOAuthCallback(provider, code, state);
         }
     }, [handleOAuthCallback]);
 
-    // Google login (redirect flow)
     const loginWithGoogle = useCallback(() => {
         const redirectUri = window.location.origin + '/';
-        const state = crypto.randomUUID();
-        sessionStorage.setItem('oauth_state', state);
-        sessionStorage.setItem('oauth_provider', 'google');
+        const state = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
+        localStorage.setItem('oauth_state', state);
+        localStorage.setItem('oauth_provider', 'google');
         window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=email%20profile&state=${state}&prompt=select_account`;
     }, []);
 
-    // Kakao login
     const loginWithKakao = useCallback(() => {
         const redirectUri = window.location.origin + '/';
-        const state = crypto.randomUUID();
-        sessionStorage.setItem('oauth_state', state);
-        sessionStorage.setItem('oauth_provider', 'kakao');
+        const state = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
+        localStorage.setItem('oauth_state', state);
+        localStorage.setItem('oauth_provider', 'kakao');
         window.location.href = `https://kauth.kakao.com/oauth/authorize?client_id=${KAKAO_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}`;
     }, []);
 
-    // Naver login
     const loginWithNaver = useCallback(() => {
         const redirectUri = window.location.origin + '/';
-        const state = crypto.randomUUID();
-        sessionStorage.setItem('oauth_state', state);
-        sessionStorage.setItem('oauth_provider', 'naver');
+        const state = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
+        localStorage.setItem('oauth_state', state);
+        localStorage.setItem('oauth_provider', 'naver');
         window.location.href = `https://nid.naver.com/oauth2.0/authorize?client_id=${NAVER_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${state}`;
     }, []);
 
