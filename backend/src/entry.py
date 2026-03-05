@@ -8,7 +8,7 @@ import hashlib
 import base64
 import time
 from typing import Any, Dict, List, Optional
-from urllib.parse import unquote
+from urllib.parse import unquote, quote
 
 
 # ─── JWT Helpers (HS256, stdlib only) ───
@@ -349,8 +349,8 @@ async def _handle_auth_google_code(request, env, headers):
     if not code or not redirect_uri:
         return Response.new(json.dumps({"error": "Missing code or redirect_uri"}), headers=headers, status=400)
 
-    # Exchange code for tokens
-    token_body = f"grant_type=authorization_code&client_id={client_id}&client_secret={client_secret}&redirect_uri={redirect_uri}&code={code}"
+    # Exchange code for tokens (redirect_uri must be URL-encoded in form body)
+    token_body = f"grant_type=authorization_code&client_id={client_id}&client_secret={client_secret}&redirect_uri={quote(redirect_uri, safe='')}&code={code}"
     token_headers = Headers.new([("Content-Type", "application/x-www-form-urlencoded")])
     token_resp = await fetch("https://oauth2.googleapis.com/token", {
         "method": "POST",
@@ -358,8 +358,8 @@ async def _handle_auth_google_code(request, env, headers):
         "body": token_body,
     })
     if not token_resp.ok:
-        error_text = await token_resp.text()
-        return Response.new(json.dumps({"error": f"Google token exchange failed: {error_text}"}), headers=headers, status=401)
+        error_text = str(await token_resp.text())
+        return Response.new(json.dumps({"error": f"Google token exchange failed ({token_resp.status}): {error_text}"}), headers=headers, status=401)
 
     token_data = json.loads(str(await token_resp.text()))
     id_token = token_data.get("id_token")
