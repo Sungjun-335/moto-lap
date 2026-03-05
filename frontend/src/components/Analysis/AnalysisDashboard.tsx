@@ -32,6 +32,63 @@ interface AnalysisDashboardProps {
     initialRefSession?: SessionData | null;
 }
 
+// Chart ID sets for smoothing lookup (module scope to avoid re-creation on render)
+const G_CHART_IDS = new Set(['lat_g', 'lon_g']);
+const GYRO_CHART_IDS = new Set(['pitch_rate', 'roll_rate', 'yaw_rate']);
+
+// Extracted from inline IIFE for cleaner rendering
+const ExpandedChartModal: React.FC<{
+    chart: import('./chartRegistry').ChartDefinition;
+    chartData: import('../../utils/analysis').AnalysisPoint[];
+    expandedHeight: number;
+    flexConfig?: { title: string; lines: import('./FlexibleLineChart').LineConfig[]; yDomain?: [number | string, number | string] };
+    dragState: any;
+    onMouseMove: any;
+    onMouseDown: any;
+    onMouseUp: any;
+    zoomDomain: [number, number] | null;
+    cursorDistance: number | null;
+    cornerRanges: any;
+    drivingEventMarkers: any;
+    onClose: () => void;
+    t: any;
+}> = ({ chart, chartData, expandedHeight, flexConfig, dragState, onMouseMove, onMouseDown, onMouseUp, zoomDomain, cursorDistance, cornerRanges, drivingEventMarkers, onClose, t }) => (
+    <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+        onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+        <div className="w-[95vw] h-[85vh] bg-zinc-900 rounded-xl border border-zinc-700 shadow-2xl flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 flex-shrink-0">
+                <h2 className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
+                    <Maximize2 size={14} className="text-zinc-400" />
+                    {getChartTitle(chart.id, t)}
+                </h2>
+                <span className="text-[10px] text-zinc-500">{t.analysisDashboard.expandClose}</span>
+                <button onClick={onClose} className="text-zinc-400 hover:text-white transition-colors p-1 rounded hover:bg-zinc-700">
+                    <X size={16} />
+                </button>
+            </div>
+            <div className="flex-1 p-4 min-h-0">
+                <AnalysisChartWrapper
+                    chartId={`expanded-${chart.id}`}
+                    ChartComponent={chart.component}
+                    flexConfig={flexConfig}
+                    data={chartData}
+                    height={expandedHeight}
+                    dragState={dragState}
+                    onMouseMove={onMouseMove}
+                    onMouseDown={onMouseDown}
+                    onMouseUp={onMouseUp}
+                    zoomDomain={zoomDomain}
+                    cursorDistance={cursorDistance}
+                    cornerRanges={cornerRanges}
+                    drivingEventMarkers={drivingEventMarkers}
+                />
+            </div>
+        </div>
+    </div>
+);
+
 // Resizable divider handle
 const ResizeHandle: React.FC<{
     direction: 'horizontal' | 'vertical';
@@ -130,7 +187,6 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
 
     // G-force smoothing toggle
     const [gSmoothing, setGSmoothing] = useState(true);
-    const G_CHART_IDS = new Set(['lat_g', 'lon_g']);
     const smoothedViewData = useMemo(
         () => gSmoothing ? smoothGData(viewData) : viewData,
         [viewData, gSmoothing]
@@ -138,7 +194,6 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
 
     // Gyro (Pitch/Roll/Yaw) smoothing toggle
     const [gyroSmoothing, setGyroSmoothing] = useState(true);
-    const GYRO_CHART_IDS = new Set(['pitch_rate', 'roll_rate', 'yaw_rate']);
     const smoothedGyroData = useMemo(
         () => gyroSmoothing ? smoothGyroData(viewData) : viewData,
         [viewData, gyroSmoothing]
@@ -149,6 +204,17 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
 
     // Expanded chart modal state
     const [expandedChartId, setExpandedChartId] = useState<string | null>(null);
+
+    // Memoized flexConfig objects to avoid re-creation on every render
+    const flexConfigMap = useMemo(() => {
+        const map: Record<string, { title: string; lines: import('./FlexibleLineChart').LineConfig[]; yDomain?: [number | string, number | string] }> = {};
+        for (const chart of CHART_REGISTRY) {
+            if (chart.flexConfig) {
+                map[chart.id] = { ...chart.flexConfig, title: getChartTitle(chart.id, t) };
+            }
+        }
+        return map;
+    }, [t]);
 
     // Chart selection state
     const [visibleCharts, setVisibleCharts] = useState<string[]>(getDefaultVisibleCharts);
@@ -245,8 +311,10 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
         let cancelled = false;
         (async () => {
             try {
-                const ko = await loadReport(data.id!, refLapIndex, anaLapIndex, 'ko');
-                const en = await loadReport(data.id!, refLapIndex, anaLapIndex, 'en');
+                const [ko, en] = await Promise.all([
+                    loadReport(data.id!, refLapIndex, anaLapIndex, 'ko'),
+                    loadReport(data.id!, refLapIndex, anaLapIndex, 'en'),
+                ]);
                 if (!cancelled) {
                     setHasSavedReport(!!(ko || en));
                     // Pre-populate memory cache
@@ -748,7 +816,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
                                     key={chart.id}
                                     chartId={chart.id}
                                     ChartComponent={chart.component}
-                                    flexConfig={chart.flexConfig ? { ...chart.flexConfig, title: getChartTitle(chart.id, t) } : undefined}
+                                    flexConfig={flexConfigMap[chart.id]}
                                     data={G_CHART_IDS.has(chart.id) ? smoothedViewData : GYRO_CHART_IDS.has(chart.id) ? smoothedGyroData : viewData}
                                     height={chart.height}
                                     dragState={dragState}
@@ -789,48 +857,24 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
                 const chart = CHART_REGISTRY.find(c => c.id === expandedChartId);
                 if (!chart) return null;
                 const chartData = G_CHART_IDS.has(chart.id) ? smoothedViewData : GYRO_CHART_IDS.has(chart.id) ? smoothedGyroData : viewData;
-                // 85vh modal - header(40px) - padding(32px) = available chart height
                 const expandedHeight = Math.round(window.innerHeight * 0.85 - 72);
                 return (
-                    <div
-                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
-                        onClick={(e) => { if (e.target === e.currentTarget) setExpandedChartId(null); }}
-                    >
-                        <div className="w-[95vw] h-[85vh] bg-zinc-900 rounded-xl border border-zinc-700 shadow-2xl flex flex-col overflow-hidden">
-                            {/* Modal Header */}
-                            <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 flex-shrink-0">
-                                <h2 className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
-                                    <Maximize2 size={14} className="text-zinc-400" />
-                                    {getChartTitle(chart.id, t)}
-                                </h2>
-                                <span className="text-[10px] text-zinc-500">{t.analysisDashboard.expandClose}</span>
-                                <button
-                                    onClick={() => setExpandedChartId(null)}
-                                    className="text-zinc-400 hover:text-white transition-colors p-1 rounded hover:bg-zinc-700"
-                                >
-                                    <X size={16} />
-                                </button>
-                            </div>
-                            {/* Expanded Chart */}
-                            <div className="flex-1 p-4 min-h-0">
-                                <AnalysisChartWrapper
-                                    chartId={`expanded-${chart.id}`}
-                                    ChartComponent={chart.component}
-                                    flexConfig={chart.flexConfig ? { ...chart.flexConfig, title: getChartTitle(chart.id, t) } : undefined}
-                                    data={chartData}
-                                    height={expandedHeight}
-                                    dragState={dragState}
-                                    onMouseMove={handleChartMouseMove}
-                                    onMouseDown={handleChartMouseDown}
-                                    onMouseUp={handleChartMouseUp}
-                                    zoomDomain={zoomDomain}
-                                    cursorDistance={cursorDistance}
-                                    cornerRanges={cornerDistanceRanges}
-                                    drivingEventMarkers={chart.id === 'driving_events' || showDrivingMarkers ? drivingEventMarkers : undefined}
-                                />
-                            </div>
-                        </div>
-                    </div>
+                    <ExpandedChartModal
+                        chart={chart}
+                        chartData={chartData}
+                        expandedHeight={expandedHeight}
+                        flexConfig={flexConfigMap[chart.id]}
+                        dragState={dragState}
+                        onMouseMove={handleChartMouseMove}
+                        onMouseDown={handleChartMouseDown}
+                        onMouseUp={handleChartMouseUp}
+                        zoomDomain={zoomDomain}
+                        cursorDistance={cursorDistance}
+                        cornerRanges={cornerDistanceRanges}
+                        drivingEventMarkers={chart.id === 'driving_events' || showDrivingMarkers ? drivingEventMarkers : undefined}
+                        onClose={() => setExpandedChartId(null)}
+                        t={t}
+                    />
                 );
             })()}
 

@@ -1,13 +1,16 @@
-import type { ComponentType } from 'react';
+import { lazy, type ComponentType } from 'react';
 import type { ChartComponentProps } from './AnalysisChartWrapper';
 import type { LineConfig } from './FlexibleLineChart';
 
+// Default visible charts — eagerly loaded
 import DeltaChart from './DeltaChart';
-import InputChart from './InputChart';
-import ThrottleBrakeChart from './ThrottleBrakeChart';
-import GSumChart from './GSumChart';
-import ActivityChart from './ActivityChart';
-import DrivingEventsChart from './DrivingEventsChart';
+
+// Non-default charts — lazy loaded for bundle size reduction
+const InputChart = lazy(() => import('./InputChart'));
+const ThrottleBrakeChart = lazy(() => import('./ThrottleBrakeChart'));
+const GSumChart = lazy(() => import('./GSumChart'));
+const ActivityChart = lazy(() => import('./ActivityChart'));
+const DrivingEventsChart = lazy(() => import('./DrivingEventsChart'));
 
 export interface ChartDefinition {
     id: string;

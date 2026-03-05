@@ -44,13 +44,9 @@ function App() {
   };
 
   const handleBatchLoaded = async (batchSessions: SessionData[]) => {
-    const saved: SessionData[] = [];
-    for (const data of batchSessions) {
-      const id = await saveSession(data, user?.id);
-      data.id = id;
-      saved.push(data);
-    }
-    setSessions(prev => [...prev, ...saved]);
+    const ids = await Promise.all(batchSessions.map(d => saveSession(d, user?.id)));
+    batchSessions.forEach((d, i) => { d.id = ids[i]; });
+    setSessions(prev => [...prev, ...batchSessions]);
     setView('list');
     listSessions(user?.id).then(setSavedSessions);
   };

@@ -1,20 +1,25 @@
 const TOKEN_KEY = 'motolap-auth-token';
+let cachedToken: string | null = null;
 
 export function getAuthToken(): string | null {
+    if (cachedToken !== null) return cachedToken;
     try {
-        return localStorage.getItem(TOKEN_KEY);
+        cachedToken = localStorage.getItem(TOKEN_KEY);
     } catch {
-        return null;
+        cachedToken = null;
     }
+    return cachedToken;
 }
 
 export function setAuthToken(token: string): void {
+    cachedToken = token;
     try {
         localStorage.setItem(TOKEN_KEY, token);
     } catch { /* ignore */ }
 }
 
 export function clearAuthToken(): void {
+    cachedToken = null;
     try {
         localStorage.removeItem(TOKEN_KEY);
     } catch { /* ignore */ }

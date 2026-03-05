@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { Suspense, useMemo } from 'react';
 import type { AnalysisPoint } from '../../utils/analysis';
 import FlexibleLineChart from './FlexibleLineChart';
 import type { LineConfig } from './FlexibleLineChart';
@@ -138,7 +138,9 @@ export const AnalysisChartWrapper: React.FC<AnalysisChartWrapperProps> = ({
     return (
         <div className="bg-zinc-900 rounded-lg p-1 relative cursor-pointer" onDoubleClick={onDoubleClick}>
             {ChartComponent ? (
-                <ChartComponent {...sharedProps} />
+                <Suspense fallback={<div style={{ height: sharedProps.height }} className="flex items-center justify-center text-zinc-600 text-xs">Loading...</div>}>
+                    <ChartComponent {...sharedProps} />
+                </Suspense>
             ) : flexConfig ? (
                 <FlexibleLineChart
                     {...sharedProps}
