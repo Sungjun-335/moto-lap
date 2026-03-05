@@ -186,16 +186,14 @@ async def _call_gemini(prompt, env: Any) -> str:
     if system_text:
         req_body["systemInstruction"] = {"parts": [{"text": system_text}]}
 
-    resp_headers = Headers.new([
-        ("Content-Type", "application/json"),
-    ])
-    response = await fetch(url, {
+    req = Request.new(url, {
         "method": "POST",
-        "headers": resp_headers,
+        "headers": {"Content-Type": "application/json"},
         "body": json.dumps(req_body),
     })
+    response = await fetch(req)
     if not response.ok:
-        error_text = await response.text()
+        error_text = str(await response.text())
         raise RuntimeError(f"Gemini API error {response.status}: {error_text}")
 
     resp_text = await response.text()
