@@ -567,6 +567,211 @@ async def _handle_auth_me(request, env, headers):
     }), headers=headers)
 
 
+async def _handle_venue_stats(request, env, headers):
+    """Compute per-venue rider statistics and percentile ranking."""
+    content_bytes = await request.bytes()
+    body = json.loads(bytes(content_bytes).decode("utf-8"))
+    venue = body.get("venue", "")
+    user_metrics = body.get("metrics")  # optional: {lap_time_s, max_braking_g, ...}
+
+    if not venue:
+        return Response.new(json.dumps({"error": "Missing venue"}), headers=headers, status=400)
+
+    # Query A: LapMetrics per session
+    lap_rows = await env.DB.prepare(
+        "SELECT lm.session_id, lm.lap_id, lm.lap_time_s, lm.mean_g_sum, lm.max_g_sum, lm.max_lean_deg"
+        " FROM LapMetrics lm"
+        " JOIN Sessions s ON lm.session_id = s.id"
+        " WHERE s.venue = ? AND lm.lap_time_s IS NOT NULL"
+    ).bind(venue).all()
+
+    # Query B: Corners with driving data
+    corner_rows = await env.DB.prepare(
+        "SELECT c.session_id, c.lap_id, c.driving_json"
+        " FROM Corners c"
+        " JOIN Sessions s ON c.session_id = s.id"
+        " WHERE s.venue = ? AND c.driving_json IS NOT NULL"
+    ).bind(venue).all()
+
+    # Build session -> laps mapping
+    session_laps: Dict[int, list] = {}
+    for row in lap_rows.results:
+        sid = row.session_id
+        if sid not in session_laps:
+            session_laps[sid] = []
+        session_laps[sid].append({
+            "lap_id": row.lap_id,
+            "lap_time_s": row.lap_time_s,
+            "mean_g_sum": row.mean_g_sum,
+            "max_g_sum": row.max_g_sum,
+            "max_lean_deg": row.max_lean_deg,
+        })
+
+    # Build session -> lap -> corners mapping
+    session_corners: Dict[int, Dict[int, list]] = {}
+    for row in corner_rows.results:
+        sid = row.session_id
+        lid = row.lap_id
+        if sid not in session_corners:
+            session_corners[sid] = {}
+        if lid not in session_corners[sid]:
+            session_corners[sid][lid] = []
+        driving = json.loads(row.driving_json) if row.driving_json else {}
+        session_corners[sid][lid].append(driving)
+
+    # Compute per-session stats
+    session_stats: List[dict] = []
+    for sid, laps in session_laps.items():
+        valid_laps = [l for l in laps if l["lap_time_s"] is not None]
+        if not valid_laps:
+            continue
+        best_lap = min(valid_laps, key=lambda l: l["lap_time_s"])
+        best_lap_time = best_lap["lap_time_s"]
+        best_lap_id = best_lap["lap_id"]
+
+        max_mean_g_sum = max((l["mean_g_sum"] for l in valid_laps if l["mean_g_sum"] is not None), default=None)
+        max_lean_deg = max((l["max_lean_deg"] for l in valid_laps if l["max_lean_deg"] is not None), default=None)
+
+        best_corners = session_corners.get(sid, {}).get(best_lap_id, [])
+
+        # Max braking G (absolute value of min_accel_x_g)
+        max_braking_g = None
+        for drv in best_corners:
+            bp = drv.get("braking_profile") or {}
+            min_ax = bp.get("min_accel_x_g")
+            if min_ax is not None:
+                abs_val = abs(min_ax)
+                if max_braking_g is None or abs_val > max_braking_g:
+                    max_braking_g = abs_val
+
+        # Trail braking quality
+        total_corners = len(best_corners)
+        trail_braking_count = 0
+        g_dip_ratios: List[float] = []
+        eob_sol_overlap_count = 0
+
+        for drv in best_corners:
+            bp = drv.get("braking_profile") or {}
+            lp = drv.get("lean_profile") or {}
+            gd = drv.get("g_dip") or {}
+
+            eob = bp.get("eob_offset_s")
+            sol = lp.get("sol_offset_s")
+            if eob is not None and sol is not None and eob > sol:
+                trail_braking_count += 1
+                eob_sol_overlap_count += 1
+
+            ratio = gd.get("g_dip_ratio")
+            if ratio is not None:
+                g_dip_ratios.append(ratio)
+
+        if total_corners > 0:
+            tb_pct = trail_braking_count / total_corners * 100
+            overlap_pct = eob_sol_overlap_count / total_corners * 100
+            avg_gdip = (sum(g_dip_ratios) / len(g_dip_ratios) * 100) if g_dip_ratios else 0
+            trail_quality = 0.4 * tb_pct + 0.3 * avg_gdip + 0.3 * overlap_pct
+        else:
+            trail_quality = None
+
+        # Coasting penalty (sum across best lap corners)
+        coasting_total = 0.0
+        has_coasting = False
+        for drv in best_corners:
+            cp = drv.get("coasting_penalty") or {}
+            cst = cp.get("cst_total_time_s")
+            if cst is not None:
+                coasting_total += cst
+                has_coasting = True
+
+        session_stats.append({
+            "lap_time_s": best_lap_time,
+            "max_braking_g": max_braking_g,
+            "trail_braking_quality": round(trail_quality, 1) if trail_quality is not None else None,
+            "mean_g_sum": max_mean_g_sum,
+            "max_lean_deg": max_lean_deg,
+            "coasting_penalty_s": round(coasting_total, 3) if has_coasting else None,
+        })
+
+    total_sessions = len(session_stats)
+    sufficient_data = total_sessions >= 5
+
+    if total_sessions == 0:
+        return Response.new(json.dumps({
+            "venue": venue,
+            "total_sessions": 0,
+            "sufficient_data": False,
+            "distributions": {},
+            "session_stats": None,
+        }), headers=headers)
+
+    # Helper: percentile value from sorted list
+    def _pval(sv, p):
+        n = len(sv)
+        if n == 0:
+            return None
+        if n == 1:
+            return sv[0]
+        idx = p / 100.0 * (n - 1)
+        lo = int(idx)
+        hi = min(lo + 1, n - 1)
+        frac = idx - lo
+        return round(sv[lo] + frac * (sv[hi] - sv[lo]), 3)
+
+    metrics_config = [
+        ("lap_time_s", True),            # lower is better
+        ("max_braking_g", False),         # higher is better
+        ("trail_braking_quality", False), # higher is better
+        ("mean_g_sum", False),            # higher is better
+        ("max_lean_deg", False),          # higher is better
+        ("coasting_penalty_s", True),     # lower is better
+    ]
+
+    distributions: Dict[str, Any] = {}
+    for metric, _ in metrics_config:
+        values = sorted(v[metric] for v in session_stats if v[metric] is not None)
+        if values:
+            distributions[metric] = {
+                "min": round(values[0], 3),
+                "p25": _pval(values, 25),
+                "median": _pval(values, 50),
+                "p75": _pval(values, 75),
+                "max": round(values[-1], 3),
+            }
+
+    # Compute percentiles for user's metrics
+    session_result = None
+    if user_metrics and isinstance(user_metrics, dict):
+        percentiles: Dict[str, Any] = {}
+        for metric, lower_better in metrics_config:
+            val = user_metrics.get(metric)
+            if val is None:
+                continue
+            all_vals = [v[metric] for v in session_stats if v[metric] is not None]
+            if not all_vals:
+                continue
+            n = len(all_vals)
+            if lower_better:
+                rank = sum(1 for v in all_vals if v < val) + 1
+            else:
+                rank = sum(1 for v in all_vals if v > val) + 1
+            pctile = round((1 - rank / n) * 100)
+            percentiles[metric] = {
+                "value": round(val, 3),
+                "percentile": max(0, pctile),
+                "rank": rank,
+                "total": n,
+            }
+        session_result = {"percentiles": percentiles}
+
+    return Response.new(json.dumps({
+        "venue": venue,
+        "total_sessions": total_sessions,
+        "sufficient_data": sufficient_data,
+        "distributions": distributions,
+        "session_stats": session_result,
+    }), headers=headers)
+
+
 async def _handle_get_sessions(request, env, headers):
     user = await _get_user_from_request(request, env)
     if not user:
@@ -634,6 +839,15 @@ async def on_fetch(request, env):
 
     if request.method == "GET" and "/api/auth/me" in url:
         return await _handle_auth_me(request, env, headers)
+
+    # --- Venue stats ---
+    if request.method == "POST" and "/api/stats/venue" in url:
+        try:
+            return await _handle_venue_stats(request, env, headers)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response.new(json.dumps({"error": str(e)}), headers=headers, status=500)
 
     # --- Session list (authenticated) ---
     if request.method == "GET" and "/api/sessions" in url:

@@ -9,8 +9,10 @@ import { useAnalysisState } from './useAnalysisState';
 import CornerAnalysisPanel from './CornerAnalysisPanel';
 import { CHART_REGISTRY, getDefaultVisibleCharts } from './chartRegistry';
 import LapMetricsSummary from './LapMetricsSummary';
+import RiderStatsCard from './RiderStatsCard';
 import ReportModal from './ReportModal';
-import { collectReportData, buildReportPrompt, generateReport } from '../../utils/reportApi';
+import { collectReportData, buildReportPrompt, generateReport, fetchVenueStats, computeSessionMetrics } from '../../utils/reportApi';
+import type { VenueStats } from '../../utils/reportApi';
 import ReferenceSelector from './ReferenceSelector';
 import { saveReport, loadReport, listAllReports } from '../../utils/sessionStorage';
 import type { StoredReport } from '../../utils/sessionStorage';
@@ -337,6 +339,19 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
         return () => { cancelled = true; };
     }, [hasSavedReport, reportState.open]);
 
+    // Venue stats for rider percentile ranking
+    const [venueStats, setVenueStats] = useState<VenueStats | null>(null);
+
+    useEffect(() => {
+        if (!data.metadata.venue) return;
+        let cancelled = false;
+        const metrics = computeSessionMetrics(data);
+        fetchVenueStats(data.metadata.venue, metrics)
+            .then(stats => { if (!cancelled && stats) setVenueStats(stats); })
+            .catch(() => {});
+        return () => { cancelled = true; };
+    }, [data]);
+
     const fetchReport = useCallback(async (lang: 'ko' | 'en') => {
         abortRef.current?.abort();
         const ac = new AbortController();
@@ -345,7 +360,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
         setReportState({ open: true, status: 'loading', report: '', error: '' });
 
         try {
-            const rd = collectReportData(data, refLapIndex, anaLapIndex, viewData, cornerDistanceRanges);
+            const rd = collectReportData(data, refLapIndex, anaLapIndex, viewData, cornerDistanceRanges, venueStats ?? undefined);
             const prompt = buildReportPrompt(rd, lang);
             const report = await generateReport(prompt, ac.signal);
             if (!ac.signal.aborted) {
@@ -363,7 +378,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
                 setReportState({ open: true, status: 'error', report: '', error: message });
             }
         }
-    }, [data, refLapIndex, anaLapIndex, getCacheKey]);
+    }, [data, refLapIndex, anaLapIndex, getCacheKey, venueStats]);
 
     // Button click: memory cache → DB cache → confirm screen
     const handleGenerateReport = useCallback(async () => {
@@ -718,6 +733,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
                                 <X size={14} />
                             </button>
                             <LapMetricsSummary refMetrics={refMetrics} anaMetrics={anaMetrics} />
+                            {venueStats && <RiderStatsCard stats={venueStats} />}
                         </div>
                     )}
 

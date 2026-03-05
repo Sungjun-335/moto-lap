@@ -70,6 +70,42 @@ interface CornerRange {
   endDist: number;
 }
 
+// ─── Venue Stats Types ───
+
+interface PercentileInfo {
+  value: number;
+  percentile: number;
+  rank: number;
+  total: number;
+}
+
+interface DistributionInfo {
+  min: number;
+  p25: number;
+  median: number;
+  p75: number;
+  max: number;
+}
+
+export interface VenueStats {
+  venue: string;
+  total_sessions: number;
+  sufficient_data: boolean;
+  distributions: Record<string, DistributionInfo>;
+  session_stats: {
+    percentiles: Record<string, PercentileInfo>;
+  } | null;
+}
+
+export interface SessionMetrics {
+  lap_time_s: number | null;
+  max_braking_g: number | null;
+  trail_braking_quality: number | null;
+  mean_g_sum: number | null;
+  max_lean_deg: number | null;
+  coasting_penalty_s: number | null;
+}
+
 export interface ReportData {
   venue: string;
   vehicle: string;
@@ -84,6 +120,7 @@ export interface ReportData {
   corners: CornerComparison[];
   analysisPoints?: AnalysisPoint[];
   cornerRanges?: CornerRange[];
+  venueStats?: VenueStats;
 }
 
 // ─── Data Collection ───
@@ -199,6 +236,7 @@ export function collectReportData(
   anaLapIndex: number,
   analysisPoints?: AnalysisPoint[],
   cornerRanges?: { id: number; startDist: number; endDist: number }[],
+  venueStats?: VenueStats,
 ): ReportData {
   const refLap = data.laps.find(l => l.index === refLapIndex);
   const anaLap = data.laps.find(l => l.index === anaLapIndex);
@@ -235,6 +273,90 @@ export function collectReportData(
     corners,
     analysisPoints,
     cornerRanges,
+    venueStats,
+  };
+}
+
+// ─── Session Metrics Computation ───
+
+export function computeSessionMetrics(data: SessionData): SessionMetrics {
+  // Find best lap (shortest duration)
+  const validLaps = data.laps.filter(l => l.duration > 0);
+  if (validLaps.length === 0) {
+    return { lap_time_s: null, max_braking_g: null, trail_braking_quality: null, mean_g_sum: null, max_lean_deg: null, coasting_penalty_s: null };
+  }
+
+  const bestLap = validLaps.reduce((a, b) => a.duration < b.duration ? a : b);
+  const corners = bestLap.corners ?? [];
+
+  // Best lap time
+  const lap_time_s = bestLap.duration;
+
+  // Max braking G from best lap corners
+  let max_braking_g: number | null = null;
+  for (const c of corners) {
+    const minAx = c.driving?.braking_profile?.min_accel_x_g;
+    if (minAx != null) {
+      const absVal = Math.abs(minAx);
+      if (max_braking_g === null || absVal > max_braking_g) max_braking_g = absVal;
+    }
+  }
+
+  // Trail braking quality
+  const totalCorners = corners.length;
+  let trailBrakingCount = 0;
+  let eobSolOverlapCount = 0;
+  const gDipRatios: number[] = [];
+
+  for (const c of corners) {
+    const eob = c.driving?.braking_profile?.eob_offset_s;
+    const sol = c.driving?.lean_profile?.sol_offset_s;
+    if (eob != null && sol != null && eob > sol) {
+      trailBrakingCount++;
+      eobSolOverlapCount++;
+    }
+    const ratio = c.driving?.g_dip?.g_dip_ratio;
+    if (ratio != null) gDipRatios.push(ratio);
+  }
+
+  let trail_braking_quality: number | null = null;
+  if (totalCorners > 0) {
+    const tbPct = trailBrakingCount / totalCorners * 100;
+    const overlapPct = eobSolOverlapCount / totalCorners * 100;
+    const avgGdip = gDipRatios.length > 0 ? (gDipRatios.reduce((a, b) => a + b, 0) / gDipRatios.length * 100) : 0;
+    trail_braking_quality = Math.round((0.4 * tbPct + 0.3 * avgGdip + 0.3 * overlapPct) * 10) / 10;
+  }
+
+  // Mean G-Sum (max across all laps)
+  let mean_g_sum: number | null = null;
+  for (const l of validLaps) {
+    const v = l.metrics?.mean_g_sum;
+    if (v != null && (mean_g_sum === null || v > mean_g_sum)) mean_g_sum = v;
+  }
+
+  // Max lean angle from best lap corners
+  let max_lean_deg: number | null = null;
+  for (const c of corners) {
+    const v = c.driving?.lean_profile?.max_lean_deg;
+    if (v != null && (max_lean_deg === null || v > max_lean_deg)) max_lean_deg = v;
+  }
+
+  // Coasting penalty (sum across best lap corners)
+  let coasting_penalty_s: number | null = null;
+  for (const c of corners) {
+    const cst = c.driving?.coasting_penalty?.cst_total_time_s;
+    if (cst != null) {
+      coasting_penalty_s = (coasting_penalty_s ?? 0) + cst;
+    }
+  }
+
+  return {
+    lap_time_s: Math.round(lap_time_s * 1000) / 1000,
+    max_braking_g: max_braking_g != null ? Math.round(max_braking_g * 100) / 100 : null,
+    trail_braking_quality,
+    mean_g_sum: mean_g_sum != null ? Math.round(mean_g_sum * 100) / 100 : null,
+    max_lean_deg: max_lean_deg != null ? Math.round(max_lean_deg * 10) / 10 : null,
+    coasting_penalty_s: coasting_penalty_s != null ? Math.round(coasting_penalty_s * 1000) / 1000 : null,
   };
 }
 
@@ -287,6 +409,12 @@ Coasting means "a phase where the rider is not accelerating, braking, or corneri
   * Coasting penalty: Coasting time (cst_total_time_s) and speed loss (cst_speed_loss_kph). More coasting = wasted time.
   * Brake jerk: Max jerk (max_brake_jerk_g_per_s) and initial mean jerk (mean_brake_jerk_g_per_s). Higher jerk = more aggressive braking. Explain to the rider as "how quickly/hard the brake is grabbed."
 - Coaching points: At the end of each corner, provide 1-2 specific actionable corrections using distance (m) (e.g., "Delay braking onset by 5m and increase initial lever pressure to shorten the braking zone").
+
+6. Rider Level Analysis
+- If rider_ranking data is present, evaluate the rider's level within the circuit as "Top X%".
+- Start with lap time percentile, then supplement with other metrics.
+- Highest percentile = strength, lowest percentile = room for improvement.
+- If rider_ranking data is not present, skip this section entirely.
 
 ### [Tone and Style]
 - Maintain a professional, clear, and decisive tone while being encouraging.
@@ -342,6 +470,12 @@ G Sum 값은 "타이어 마찰 한계점"이라고 표기해줘. G Sum 최대값
   * 코스팅 페널티: 코스팅 시간(\`cst_total_time_s\`)과 속도 손실(\`cst_speed_loss_kph\`). 코스팅이 길면 시간 낭비.
   * 브레이크 저크: 최대 저크(\`max_brake_jerk_g_per_s\`)와 초기 평균 저크(\`mean_brake_jerk_g_per_s\`). 저크가 높으면 공격적 브레이킹. 라이더에게는 "브레이크를 잡는 속도/세기"로 설명.
 - 코칭 포인트: 각 코너 끝에 해당 라이더가 즉시 실험해볼 수 있는 구체적인 행동 교정 방법(예: "브레이킹 시작을 5m 늦추고, 초기 악력을 강하게 가져가 브레이킹 구간을 단축하세요")을 1-2개 제시하라. 거리(m) 기반으로 설명할 것.
+
+6. 라이더 수준 분석
+- rider_ranking 데이터가 있으면 "상위 X%"로 서킷 내 수준을 평가하라.
+- 랩타임 퍼센타일을 먼저 언급하고, 나머지 지표로 보충하라.
+- 가장 높은 퍼센타일 = 강점, 가장 낮은 퍼센타일 = 개선 여지로 해석하라.
+- rider_ranking 데이터가 없으면 이 섹션을 생략하라.
 
 ### [어조 및 스타일]
 - 전문가다운 명확하고 단호한 어조를 유지하되, 라이더를 격려하는 긍정적인 태도를 취하라.
@@ -416,6 +550,29 @@ function buildDataPayload(rd: ReportData): object {
     rangeMap.set(cr.id, cr);
   }
 
+  // Build rider ranking from venueStats
+  let rider_ranking: object | null = null;
+  if (rd.venueStats?.sufficient_data && rd.venueStats.session_stats?.percentiles) {
+    const p = rd.venueStats.session_stats.percentiles;
+    const metricLabels: Record<string, string> = {
+      lap_time_s: 'Best Lap Time',
+      max_braking_g: 'Max Braking G',
+      trail_braking_quality: 'Trail Braking Quality',
+      mean_g_sum: 'Mean G-Sum',
+      max_lean_deg: 'Max Lean Angle',
+      coasting_penalty_s: 'Coasting Penalty',
+    };
+    const metrics: Record<string, object> = {};
+    for (const [key, info] of Object.entries(p)) {
+      metrics[metricLabels[key] || key] = info;
+    }
+    rider_ranking = {
+      venue: rd.venueStats.venue,
+      total_sessions: rd.venueStats.total_sessions,
+      metrics,
+    };
+  }
+
   return {
     session: {
       venue: rd.venue,
@@ -426,6 +583,7 @@ function buildDataPayload(rd: ReportData): object {
       time_diff_s: round3(rd.timeDiff),
     },
     lap_metrics: lapMetrics,
+    rider_ranking,
     corners: sortedCorners.map(cc => {
       const entry: Record<string, unknown> = {
         name: cc.name,
@@ -521,6 +679,7 @@ Section order (MUST follow exactly):
 3. Positive Feedback
 4. Lap Composition Analysis
 5. Corner-by-Corner Analysis
+6. Rider Level Analysis (only if rider_ranking data exists)
 
 Rules:
 - Use corner names listed above.
@@ -542,6 +701,7 @@ Rules:
 3. 잘한 점 (Positive Feedback)
 4. 랩 구성 분석 (Lap Metrics)
 5. 코너별 상세 분석
+6. 라이더 수준 분석 (rider_ranking 데이터가 있을 때만)
 
 규칙:
 - 위에 나열된 코너 이름을 사용합니다.
@@ -597,6 +757,22 @@ export async function generateReport(
 
   const result = await resp.json();
   return result.report;
+}
+
+// ─── Venue Stats API ───
+
+export async function fetchVenueStats(venue: string, metrics: SessionMetrics): Promise<VenueStats | null> {
+  try {
+    const resp = await apiFetch('/api/stats/venue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ venue, metrics }),
+    });
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch {
+    return null;
+  }
 }
 
 // ─── Helpers ───

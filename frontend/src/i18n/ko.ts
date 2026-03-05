@@ -287,6 +287,19 @@ export const ko: Translations = {
     admin: {
         trackManager: '트랙 관리',
     },
+    riderStats: {
+        title: '라이더 수준',
+        sessions: '세션',
+        lapTime: '랩 타임',
+        brakingG: '브레이킹 G',
+        trailBrake: '트레일 브레이킹',
+        gSum: 'G-Sum',
+        leanAngle: '린 앵글',
+        coasting: '코스팅',
+        top: '상위',
+        insufficientData: '데이터 부족',
+        insufficientDataDesc: '퍼센타일 순위를 위해 최소 5개 세션이 필요합니다.',
+    },
     whatIf: {
         title: 'What-If \ubd84\uc11d',
         subtitle: '\ud53c\ucc98 \ud30c\ub77c\ubbf8\ud130\ub97c \ubcc0\uacbd\ud558\uc5ec \uc608\uce21 \ub7a9\ud0c0\uc784\uc744 \ud655\uc778\ud558\uc138\uc694',

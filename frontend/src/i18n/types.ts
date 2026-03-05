@@ -287,6 +287,19 @@ export interface Translations {
     admin: {
         trackManager: string;
     };
+    riderStats: {
+        title: string;
+        sessions: string;
+        lapTime: string;
+        brakingG: string;
+        trailBrake: string;
+        gSum: string;
+        leanAngle: string;
+        coasting: string;
+        top: string;
+        insufficientData: string;
+        insufficientDataDesc: string;
+    };
     whatIf: {
         title: string;
         subtitle: string;

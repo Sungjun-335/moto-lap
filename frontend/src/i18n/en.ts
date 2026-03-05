@@ -288,6 +288,19 @@ export const en: Translations = {
     admin: {
         trackManager: 'Track Manager',
     },
+    riderStats: {
+        title: 'Rider Level',
+        sessions: 'sessions',
+        lapTime: 'Lap Time',
+        brakingG: 'Braking G',
+        trailBrake: 'Trail Braking',
+        gSum: 'G-Sum',
+        leanAngle: 'Lean Angle',
+        coasting: 'Coasting',
+        top: 'Top',
+        insufficientData: 'Insufficient Data',
+        insufficientDataDesc: 'At least 5 sessions needed for percentile ranking.',
+    },
     whatIf: {
         title: 'What-If Analysis',
         subtitle: 'Adjust feature parameters to see predicted lap time changes',
