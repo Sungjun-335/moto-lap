@@ -258,6 +258,8 @@ Refer to G-Sum as "tire friction limit." Compare G-Sum max values — if G-Sum i
 
 Coasting means "a phase where the rider is not accelerating, braking, or cornering."
 
+**IMPORTANT: You MUST write the sections in the exact numbered order below (1→2→3→4→5). Do NOT reorder them.**
+
 ### [Analysis Rules and Guidelines]
 
 1. Session Overview
@@ -311,6 +313,7 @@ G Sum 값은 "타이어 마찰 한계점"이라고 표기해줘. G Sum 최대값
 코스팅은 "가속도, 감속도, 코너링도 안 한 구간"이라고 표현해줘.
 
 다음의 분석 규칙을 엄격하게 준수하여 마크다운(Markdown) 형식의 체계적인 보고서를 작성해줘.
+**중요: 반드시 아래 번호 순서(1→2→3→4→5) 그대로 작성하라. 절대 순서를 바꾸지 마라.**
 
 ### [분석 규칙 및 가이드라인]
 
@@ -512,6 +515,13 @@ Use the title: # ${rd.venue} Lap Comparison Analysis
 
 Corners in this session: ${cornerNames}
 
+Section order (MUST follow exactly):
+1. Session Overview
+2. Top 3 Improvement Points
+3. Positive Feedback
+4. Lap Composition Analysis
+5. Corner-by-Corner Analysis
+
 Rules:
 - Use corner names listed above.
 - **Bold** important numbers.
@@ -525,6 +535,13 @@ Rules:
 제목: # ${rd.venue} 랩 비교 분석
 
 이 세션의 코너들: ${cornerNames}
+
+섹션 순서 (반드시 이 순서대로 작성할 것):
+1. 세션 개요
+2. 핵심 개선 포인트 (Top 3)
+3. 잘한 점 (Positive Feedback)
+4. 랩 구성 분석 (Lap Metrics)
+5. 코너별 상세 분석
 
 규칙:
 - 위에 나열된 코너 이름을 사용합니다.
