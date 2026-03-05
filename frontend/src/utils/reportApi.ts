@@ -121,6 +121,7 @@ export interface ReportData {
   analysisPoints?: AnalysisPoint[];
   cornerRanges?: CornerRange[];
   venueStats?: VenueStats;
+  sessionMetrics?: SessionMetrics;
 }
 
 // ─── Data Collection ───
@@ -237,6 +238,7 @@ export function collectReportData(
   analysisPoints?: AnalysisPoint[],
   cornerRanges?: { id: number; startDist: number; endDist: number }[],
   venueStats?: VenueStats,
+  sessionMetrics?: SessionMetrics,
 ): ReportData {
   const refLap = data.laps.find(l => l.index === refLapIndex);
   const anaLap = data.laps.find(l => l.index === anaLapIndex);
@@ -274,6 +276,7 @@ export function collectReportData(
     analysisPoints,
     cornerRanges,
     venueStats,
+    sessionMetrics,
   };
 }
 
@@ -411,10 +414,10 @@ Coasting means "a phase where the rider is not accelerating, braking, or corneri
 - Coaching points: At the end of each corner, provide 1-2 specific actionable corrections using distance (m) (e.g., "Delay braking onset by 5m and increase initial lever pressure to shorten the braking zone").
 
 6. Rider Level Analysis
-- If rider_ranking data is present, evaluate the rider's level within the circuit as "Top X%".
-- Start with lap time percentile, then supplement with other metrics.
-- Highest percentile = strength, lowest percentile = room for improvement.
-- If rider_ranking data is not present, skip this section entirely.
+- If rider_ranking data is present, analyze the rider's key performance metrics.
+- If percentile data exists (has_percentiles=true), evaluate the rider's level as "Top X%" within the circuit. Start with lap time, then other metrics. Highest percentile = strength, lowest = room for improvement.
+- If no percentile data, still analyze the absolute metric values (braking G, lean angle, G-Sum, trail braking quality, coasting) and provide coaching guidance on what good values look like.
+- If rider_ranking data is not present at all, skip this section entirely.
 
 ### [Tone and Style]
 - Maintain a professional, clear, and decisive tone while being encouraging.
@@ -472,10 +475,10 @@ G Sum 값은 "타이어 마찰 한계점"이라고 표기해줘. G Sum 최대값
 - 코칭 포인트: 각 코너 끝에 해당 라이더가 즉시 실험해볼 수 있는 구체적인 행동 교정 방법(예: "브레이킹 시작을 5m 늦추고, 초기 악력을 강하게 가져가 브레이킹 구간을 단축하세요")을 1-2개 제시하라. 거리(m) 기반으로 설명할 것.
 
 6. 라이더 수준 분석
-- rider_ranking 데이터가 있으면 "상위 X%"로 서킷 내 수준을 평가하라.
-- 랩타임 퍼센타일을 먼저 언급하고, 나머지 지표로 보충하라.
-- 가장 높은 퍼센타일 = 강점, 가장 낮은 퍼센타일 = 개선 여지로 해석하라.
-- rider_ranking 데이터가 없으면 이 섹션을 생략하라.
+- rider_ranking 데이터가 있으면 라이더의 핵심 성능 지표를 분석하라.
+- 퍼센타일 데이터가 있으면(has_percentiles=true) "상위 X%"로 서킷 내 수준을 평가하라. 랩타임 먼저, 나머지 지표 보충. 가장 높은 퍼센타일 = 강점, 가장 낮은 = 개선 여지.
+- 퍼센타일 데이터가 없으면 절대값(브레이킹 G, 린 앵글, G-Sum, 트레일 브레이킹 품질, 코스팅)을 분석하고 좋은 수치가 어느 정도인지 코칭 가이드를 제시하라.
+- rider_ranking 데이터가 아예 없으면 이 섹션을 생략하라.
 
 ### [어조 및 스타일]
 - 전문가다운 명확하고 단호한 어조를 유지하되, 라이더를 격려하는 긍정적인 태도를 취하라.
@@ -550,10 +553,10 @@ function buildDataPayload(rd: ReportData): object {
     rangeMap.set(cr.id, cr);
   }
 
-  // Build rider ranking from venueStats
+  // Build rider ranking: always include user's metrics, add percentiles when available
   let rider_ranking: object | null = null;
-  if (rd.venueStats?.sufficient_data && rd.venueStats.session_stats?.percentiles) {
-    const p = rd.venueStats.session_stats.percentiles;
+  const sm = rd.sessionMetrics;
+  if (sm && (sm.lap_time_s != null || sm.max_braking_g != null || sm.mean_g_sum != null)) {
     const metricLabels: Record<string, string> = {
       lap_time_s: 'Best Lap Time',
       max_braking_g: 'Max Braking G',
@@ -562,13 +565,30 @@ function buildDataPayload(rd: ReportData): object {
       max_lean_deg: 'Max Lean Angle',
       coasting_penalty_s: 'Coasting Penalty',
     };
+    const metricUnits: Record<string, string> = {
+      lap_time_s: 's', max_braking_g: 'G', trail_braking_quality: 'pts',
+      mean_g_sum: 'G', max_lean_deg: 'deg', coasting_penalty_s: 's',
+    };
+
+    const hasPercentiles = rd.venueStats?.sufficient_data && rd.venueStats.session_stats?.percentiles;
+    const pctMap = hasPercentiles ? rd.venueStats!.session_stats!.percentiles : {};
+
     const metrics: Record<string, object> = {};
-    for (const [key, info] of Object.entries(p)) {
-      metrics[metricLabels[key] || key] = info;
+    for (const [key, label] of Object.entries(metricLabels)) {
+      const val = sm[key as keyof SessionMetrics];
+      if (val == null) continue;
+      const pctInfo = pctMap[key];
+      metrics[label] = {
+        value: val,
+        unit: metricUnits[key],
+        ...(pctInfo ? { percentile: pctInfo.percentile, rank: pctInfo.rank, total: pctInfo.total } : {}),
+      };
     }
+
     rider_ranking = {
-      venue: rd.venueStats.venue,
-      total_sessions: rd.venueStats.total_sessions,
+      venue: rd.venue,
+      total_sessions: rd.venueStats?.total_sessions ?? 0,
+      has_percentiles: !!hasPercentiles,
       metrics,
     };
   }
@@ -679,7 +699,7 @@ Section order (MUST follow exactly):
 3. Positive Feedback
 4. Lap Composition Analysis
 5. Corner-by-Corner Analysis
-6. Rider Level Analysis (only if rider_ranking data exists)
+6. Rider Level Analysis (only if rider_ranking data exists in JSON)
 
 Rules:
 - Use corner names listed above.

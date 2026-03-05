@@ -360,7 +360,8 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
         setReportState({ open: true, status: 'loading', report: '', error: '' });
 
         try {
-            const rd = collectReportData(data, refLapIndex, anaLapIndex, viewData, cornerDistanceRanges, venueStats ?? undefined);
+            const metrics = computeSessionMetrics(data);
+            const rd = collectReportData(data, refLapIndex, anaLapIndex, viewData, cornerDistanceRanges, venueStats ?? undefined, metrics);
             const prompt = buildReportPrompt(rd, lang);
             const report = await generateReport(prompt, ac.signal);
             if (!ac.signal.aborted) {
