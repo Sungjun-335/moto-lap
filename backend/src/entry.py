@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from js import Headers, Response, fetch
+from js import Headers, Response, URLSearchParams, fetch
 import json
 import os
 import hmac
@@ -350,12 +350,15 @@ async def _handle_auth_google_code(request, env, headers):
         return Response.new(json.dumps({"error": "Missing code or redirect_uri"}), headers=headers, status=400)
 
     # Exchange code for tokens
-    token_body = f"grant_type=authorization_code&client_id={client_id}&client_secret={client_secret}&redirect_uri={redirect_uri}&code={code}"
-    token_headers = Headers.new([("Content-Type", "application/x-www-form-urlencoded")])
+    params = URLSearchParams.new()
+    params.append("grant_type", "authorization_code")
+    params.append("client_id", client_id)
+    params.append("client_secret", client_secret)
+    params.append("redirect_uri", redirect_uri)
+    params.append("code", code)
     token_resp = await fetch("https://oauth2.googleapis.com/token", {
         "method": "POST",
-        "headers": token_headers,
-        "body": token_body,
+        "body": params,
     })
     if not token_resp.ok:
         error_text = str(await token_resp.text())
@@ -409,15 +412,17 @@ async def _handle_auth_kakao_token(request, env, headers):
         return Response.new(json.dumps({"error": "Missing code or redirect_uri"}), headers=headers, status=400)
 
     # 1. Exchange code for access_token
-    token_body = f"grant_type=authorization_code&client_id={kakao_client_id}&redirect_uri={redirect_uri}&code={code}"
+    params = URLSearchParams.new()
+    params.append("grant_type", "authorization_code")
+    params.append("client_id", kakao_client_id)
+    params.append("redirect_uri", redirect_uri)
+    params.append("code", code)
     if kakao_client_secret:
-        token_body += f"&client_secret={kakao_client_secret}"
+        params.append("client_secret", kakao_client_secret)
 
-    token_headers = Headers.new([("Content-Type", "application/x-www-form-urlencoded")])
     token_resp = await fetch("https://kauth.kakao.com/oauth/token", {
         "method": "POST",
-        "headers": token_headers,
-        "body": token_body,
+        "body": params,
     })
     if not token_resp.ok:
         error_text = await token_resp.text()
@@ -480,15 +485,17 @@ async def _handle_auth_naver_token(request, env, headers):
         return Response.new(json.dumps({"error": "Missing code"}), headers=headers, status=400)
 
     # 1. Exchange code for access_token
-    token_body = f"grant_type=authorization_code&client_id={naver_client_id}&client_secret={naver_client_secret}&code={code}"
+    params = URLSearchParams.new()
+    params.append("grant_type", "authorization_code")
+    params.append("client_id", naver_client_id)
+    params.append("client_secret", naver_client_secret)
+    params.append("code", code)
     if state:
-        token_body += f"&state={state}"
+        params.append("state", state)
 
-    token_headers = Headers.new([("Content-Type", "application/x-www-form-urlencoded")])
     token_resp = await fetch("https://nid.naver.com/oauth2.0/token", {
         "method": "POST",
-        "headers": token_headers,
-        "body": token_body,
+        "body": params,
     })
     if not token_resp.ok:
         error_text = await token_resp.text()
