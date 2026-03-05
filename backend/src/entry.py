@@ -350,13 +350,7 @@ async def _handle_auth_google_code(request, env, headers):
         return Response.new(json.dumps({"error": "Missing code or redirect_uri"}), headers=headers, status=400)
 
     # Exchange code for tokens
-    token_body = urlencode({
-        "grant_type": "authorization_code",
-        "client_id": client_id,
-        "client_secret": client_secret,
-        "redirect_uri": redirect_uri,
-        "code": code,
-    })
+    token_body = f"grant_type=authorization_code&client_id={client_id}&client_secret={client_secret}&redirect_uri={redirect_uri}&code={code}"
     token_headers = Headers.new([("Content-Type", "application/x-www-form-urlencoded")])
     token_resp = await fetch("https://oauth2.googleapis.com/token", {
         "method": "POST",
