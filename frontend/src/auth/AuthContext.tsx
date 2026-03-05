@@ -130,15 +130,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         document.head.appendChild(script);
     }, [handleGoogleToken]);
 
-    useEffect(() => {
-        const token = getAuthToken();
-        if (token) {
-            verifyToken().finally(() => setIsLoading(false));
-        } else {
-            setIsLoading(false);
-        }
-    }, [verifyToken]);
-
     // Handle OAuth callback (Kakao/Naver redirect with ?code=)
     const handleOAuthCallback = useCallback(async (provider: string, code: string, state: string | null) => {
         try {
@@ -165,7 +156,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, []);
 
-    // Check for OAuth callback on mount (Kakao/Naver only)
+    // On mount: handle OAuth callback OR verify existing token (not both)
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const code = params.get('code');
@@ -173,12 +164,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const provider = localStorage.getItem('oauth_provider');
 
         if (code && provider && (provider === 'kakao' || provider === 'naver')) {
+            // OAuth redirect callback — exchange code for new token
             window.history.replaceState({}, '', window.location.pathname);
             localStorage.removeItem('oauth_provider');
             localStorage.removeItem('oauth_state');
             handleOAuthCallback(provider, code, state);
+        } else {
+            // No OAuth callback — verify existing token
+            const token = getAuthToken();
+            if (token) {
+                verifyToken().finally(() => setIsLoading(false));
+            } else {
+                setIsLoading(false);
+            }
         }
-    }, [handleOAuthCallback]);
+    }, [verifyToken, handleOAuthCallback]);
 
     const loginWithGoogle = useCallback(() => {
         if (googleClientRef.current) {
