@@ -8,7 +8,7 @@ import hashlib
 import base64
 import time
 from typing import Any, Dict, List, Optional
-from urllib.parse import unquote, quote
+from urllib.parse import unquote, quote, urlencode
 
 
 # ─── JWT Helpers (HS256, stdlib only) ───
@@ -349,8 +349,14 @@ async def _handle_auth_google_code(request, env, headers):
     if not code or not redirect_uri:
         return Response.new(json.dumps({"error": "Missing code or redirect_uri"}), headers=headers, status=400)
 
-    # Exchange code for tokens (redirect_uri must be URL-encoded in form body)
-    token_body = f"grant_type=authorization_code&client_id={client_id}&client_secret={client_secret}&redirect_uri={quote(redirect_uri, safe='')}&code={code}"
+    # Exchange code for tokens
+    token_body = urlencode({
+        "grant_type": "authorization_code",
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "redirect_uri": redirect_uri,
+        "code": code,
+    })
     token_headers = Headers.new([("Content-Type", "application/x-www-form-urlencoded")])
     token_resp = await fetch("https://oauth2.googleapis.com/token", {
         "method": "POST",
