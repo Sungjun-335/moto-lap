@@ -349,22 +349,34 @@ async def _handle_auth_google_code(request, env, headers):
     if not code or not redirect_uri:
         return Response.new(json.dumps({"error": "Missing code or redirect_uri"}), headers=headers, status=400)
 
-    # Exchange code for tokens
-    params = URLSearchParams.new()
-    params.append("grant_type", "authorization_code")
-    params.append("client_id", client_id)
-    params.append("client_secret", client_secret)
-    params.append("redirect_uri", redirect_uri)
-    params.append("code", code)
-    token_req = Request.new("https://oauth2.googleapis.com/token", {
-        "method": "POST",
-        "headers": {"Content-Type": "application/x-www-form-urlencoded"},
-        "body": params,
+    # Exchange code for tokens — debug version
+    token_body_str = urlencode({
+        "grant_type": "authorization_code",
+        "client_id": str(client_id),
+        "client_secret": str(client_secret),
+        "redirect_uri": str(redirect_uri),
+        "code": str(code),
     })
-    token_resp = await fetch(token_req)
+    token_resp = await fetch("https://oauth2.googleapis.com/token", {
+        "method": "POST",
+        "headers": Headers.new([("Content-Type", "application/x-www-form-urlencoded")]),
+        "body": token_body_str,
+    })
+    resp_text = str(await token_resp.text())
+    resp_url = str(token_resp.url)
+    resp_status = int(str(token_resp.status))
+    resp_status_text = str(token_resp.statusText)
     if not token_resp.ok:
-        error_text = str(await token_resp.text())
-        return Response.new(json.dumps({"error": f"Google token exchange failed ({token_resp.status}): {error_text}"}), headers=headers, status=401)
+        return Response.new(json.dumps({
+            "error": f"Google token exchange failed",
+            "debug": {
+                "status": resp_status,
+                "statusText": resp_status_text,
+                "url": resp_url,
+                "responseBody": resp_text[:500],
+                "sentBody": token_body_str[:200],
+            }
+        }), headers=headers, status=401)
 
     token_data = json.loads(str(await token_resp.text()))
     id_token = token_data.get("id_token")
