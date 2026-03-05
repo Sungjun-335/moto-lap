@@ -5,9 +5,12 @@ declare global {
     interface Window {
         google?: {
             accounts: {
-                id: {
-                    initialize: (config: { client_id: string; callback: (response: { credential: string }) => void }) => void;
-                    prompt: () => void;
+                oauth2: {
+                    initTokenClient: (config: {
+                        client_id: string;
+                        scope: string;
+                        callback: (response: { access_token: string; error?: string }) => void;
+                    }) => { requestAccessToken: () => void };
                 };
             };
         };
@@ -59,6 +62,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [isLoading, setIsLoading] = useState(true);
     const [authError, setAuthError] = useState<string | null>(null);
     const gsiLoadedRef = useRef(false);
+    const googleClientRef = useRef<{ requestAccessToken: () => void } | null>(null);
 
     // Verify existing token on mount
     const verifyToken = useCallback(async () => {
@@ -77,14 +81,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, []);
 
-    // Google GSI callback — receives id_token directly from Google
-    const handleGoogleCredential = useCallback(async (response: { credential: string }) => {
+    // Google token callback — receives access_token via popup
+    const handleGoogleToken = useCallback(async (tokenResponse: { access_token: string; error?: string }) => {
+        if (tokenResponse.error) {
+            setAuthError(`Google login error: ${tokenResponse.error}`);
+            return;
+        }
         try {
             setIsLoading(true);
             const resp = await fetch(`${API_URL}/api/auth/google-token`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id_token: response.credential }),
+                body: JSON.stringify({ access_token: tokenResponse.access_token }),
             });
             if (resp.ok) {
                 const data = await resp.json();
@@ -102,7 +110,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, []);
 
-    // Load Google GSI script
+    // Load Google GSI script + init token client
     useEffect(() => {
         if (gsiLoadedRef.current || !GOOGLE_CLIENT_ID) return;
         gsiLoadedRef.current = true;
@@ -111,13 +119,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         script.src = 'https://accounts.google.com/gsi/client';
         script.async = true;
         script.onload = () => {
-            window.google?.accounts.id.initialize({
-                client_id: GOOGLE_CLIENT_ID,
-                callback: handleGoogleCredential,
-            });
+            if (window.google?.accounts.oauth2) {
+                googleClientRef.current = window.google.accounts.oauth2.initTokenClient({
+                    client_id: GOOGLE_CLIENT_ID,
+                    scope: 'email profile',
+                    callback: handleGoogleToken,
+                });
+            }
         };
         document.head.appendChild(script);
-    }, [handleGoogleCredential]);
+    }, [handleGoogleToken]);
 
     useEffect(() => {
         const token = getAuthToken();
@@ -170,8 +181,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, [handleOAuthCallback]);
 
     const loginWithGoogle = useCallback(() => {
-        if (window.google?.accounts.id) {
-            window.google.accounts.id.prompt();
+        if (googleClientRef.current) {
+            googleClientRef.current.requestAccessToken();
         } else {
             setAuthError('Google Sign-In not loaded');
         }

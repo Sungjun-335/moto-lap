@@ -283,7 +283,7 @@ async def _upsert_user(env, provider: str, provider_id: str, email: str, name: s
 # ─── Auth Handlers ───
 
 async def _handle_auth_google_token(request, env, headers):
-    """Verify Google id_token and return our JWT. Uses GET to Google's tokeninfo (no outbound POST)."""
+    """Verify Google id_token or access_token and return our JWT. Uses only GET requests to Google."""
     jwt_secret = _get_env_value(env, "JWT_SECRET")
     client_id = _get_env_value(env, "GOOGLE_CLIENT_ID")
     if not jwt_secret or not client_id:
@@ -292,27 +292,43 @@ async def _handle_auth_google_token(request, env, headers):
     content_bytes = await request.bytes()
     body = json.loads(bytes(content_bytes).decode("utf-8"))
     id_token = body.get("id_token")
-    if not id_token:
-        return Response.new(json.dumps({"error": "Missing id_token"}), headers=headers, status=400)
+    access_token = body.get("access_token")
 
-    # Verify id_token via Google's tokeninfo endpoint (GET request)
-    verify_resp = await fetch(f"https://oauth2.googleapis.com/tokeninfo?id_token={id_token}")
-    if not verify_resp.ok:
-        return Response.new(json.dumps({"error": "Invalid id_token"}), headers=headers, status=401)
+    if access_token:
+        # Verify access_token via Google's userinfo endpoint (GET request)
+        userinfo_resp = await fetch(f"https://www.googleapis.com/oauth2/v3/userinfo?access_token={access_token}")
+        if not userinfo_resp.ok:
+            return Response.new(json.dumps({"error": "Invalid access_token"}), headers=headers, status=401)
 
-    # verify_resp.json() returns JsProxy — parse text instead
-    token_text = await verify_resp.text()
-    token_dict = json.loads(str(token_text))
+        userinfo_text = await userinfo_resp.text()
+        userinfo = json.loads(str(userinfo_text))
 
-    # Verify audience matches our client ID
-    aud = str(token_dict.get("aud", ""))
-    if aud != client_id:
-        return Response.new(json.dumps({"error": "Token audience mismatch"}), headers=headers, status=401)
+        google_id = str(userinfo.get("sub", ""))
+        email = str(userinfo.get("email", ""))
+        name = str(userinfo.get("name", ""))
+        picture = str(userinfo.get("picture", ""))
 
-    google_id = str(token_dict.get("sub", ""))
-    email = str(token_dict.get("email", ""))
-    name = str(token_dict.get("name", ""))
-    picture = str(token_dict.get("picture", ""))
+    elif id_token:
+        # Verify id_token via Google's tokeninfo endpoint (GET request)
+        verify_resp = await fetch(f"https://oauth2.googleapis.com/tokeninfo?id_token={id_token}")
+        if not verify_resp.ok:
+            return Response.new(json.dumps({"error": "Invalid id_token"}), headers=headers, status=401)
+
+        token_text = await verify_resp.text()
+        token_dict = json.loads(str(token_text))
+
+        # Verify audience matches our client ID
+        aud = str(token_dict.get("aud", ""))
+        if aud != client_id:
+            return Response.new(json.dumps({"error": "Token audience mismatch"}), headers=headers, status=401)
+
+        google_id = str(token_dict.get("sub", ""))
+        email = str(token_dict.get("email", ""))
+        name = str(token_dict.get("name", ""))
+        picture = str(token_dict.get("picture", ""))
+
+    else:
+        return Response.new(json.dumps({"error": "Missing id_token or access_token"}), headers=headers, status=400)
 
     if not google_id or not email:
         return Response.new(json.dumps({"error": "Invalid token info"}), headers=headers, status=401)
