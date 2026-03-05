@@ -356,13 +356,17 @@ async def _handle_auth_google_code(request, env, headers):
     params.append("client_secret", client_secret)
     params.append("redirect_uri", redirect_uri)
     params.append("code", code)
+    token_body = params.toString()
+    token_headers = Headers.new([("Content-Type", "application/x-www-form-urlencoded")])
     token_resp = await fetch("https://oauth2.googleapis.com/token", {
         "method": "POST",
-        "body": params,
+        "headers": token_headers,
+        "body": token_body,
     })
     if not token_resp.ok:
         error_text = str(await token_resp.text())
-        return Response.new(json.dumps({"error": f"Google token exchange failed ({token_resp.status}): {error_text}"}), headers=headers, status=401)
+        debug = f" [debug body={token_body}]"
+        return Response.new(json.dumps({"error": f"Google token exchange failed ({token_resp.status}): {error_text}{debug}"}), headers=headers, status=401)
 
     token_data = json.loads(str(await token_resp.text()))
     id_token = token_data.get("id_token")
@@ -420,13 +424,17 @@ async def _handle_auth_kakao_token(request, env, headers):
     if kakao_client_secret:
         params.append("client_secret", kakao_client_secret)
 
+    token_body = params.toString()
+    token_headers = Headers.new([("Content-Type", "application/x-www-form-urlencoded")])
     token_resp = await fetch("https://kauth.kakao.com/oauth/token", {
         "method": "POST",
-        "body": params,
+        "headers": token_headers,
+        "body": token_body,
     })
     if not token_resp.ok:
         error_text = await token_resp.text()
-        return Response.new(json.dumps({"error": f"Kakao token exchange failed: {error_text}"}), headers=headers, status=401)
+        debug = f" [debug body={token_body}]"
+        return Response.new(json.dumps({"error": f"Kakao token exchange failed: {error_text}{debug}"}), headers=headers, status=401)
 
     token_data = json.loads(str(await token_resp.text()))
     access_token = token_data.get("access_token")
