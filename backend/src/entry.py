@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from js import Headers, Request, Response, URLSearchParams, fetch
+from js import Headers, Object, Request, Response, URLSearchParams, fetch
+from pyodide.ffi import to_js
 import json
 import os
 import hmac
@@ -9,6 +10,11 @@ import base64
 import time
 from typing import Any, Dict, List, Optional
 from urllib.parse import unquote, quote, urlencode
+
+
+def _js_obj(d: dict):
+    """Convert Python dict to proper JavaScript object."""
+    return to_js(d, dict_converter=Object.fromEntries)
 
 
 # ─── JWT Helpers (HS256, stdlib only) ───
@@ -186,12 +192,11 @@ async def _call_gemini(prompt, env: Any) -> str:
     if system_text:
         req_body["systemInstruction"] = {"parts": [{"text": system_text}]}
 
-    req = Request.new(url, {
+    response = await fetch(url, _js_obj({
         "method": "POST",
-        "headers": {"Content-Type": "application/json"},
+        "headers": _js_obj({"Content-Type": "application/json"}),
         "body": json.dumps(req_body),
-    })
-    response = await fetch(req)
+    }))
     if not response.ok:
         error_text = str(await response.text())
         raise RuntimeError(f"Gemini API error {response.status}: {error_text}")
@@ -238,11 +243,11 @@ async def _call_lambda(csv_bytes: bytes, env: Any) -> Dict[str, Any]:
     proxy_headers = Headers.new(header_items)
     response = await fetch(
         lambda_url,
-        {
+        _js_obj({
             "method": "POST",
             "headers": proxy_headers,
             "body": csv_bytes,
-        },
+        }),
     )
     if not response.ok:
         error_text = await response.text()
@@ -370,12 +375,11 @@ async def _handle_auth_google_code(request, env, headers):
     params.append("client_secret", client_secret)
     params.append("redirect_uri", redirect_uri)
     params.append("code", code)
-    token_req = Request.new("https://oauth2.googleapis.com/token", {
+    token_resp = await fetch("https://oauth2.googleapis.com/token", _js_obj({
         "method": "POST",
-        "headers": {"Content-Type": "application/x-www-form-urlencoded"},
+        "headers": _js_obj({"Content-Type": "application/x-www-form-urlencoded"}),
         "body": params,
-    })
-    token_resp = await fetch(token_req)
+    }))
     if not token_resp.ok:
         error_text = str(await token_resp.text())
         return Response.new(json.dumps({"error": f"Google token exchange failed ({token_resp.status}): {error_text}"}), headers=headers, status=401)
@@ -436,12 +440,11 @@ async def _handle_auth_kakao_token(request, env, headers):
     if kakao_client_secret:
         params.append("client_secret", kakao_client_secret)
 
-    token_req = Request.new("https://kauth.kakao.com/oauth/token", {
+    token_resp = await fetch("https://kauth.kakao.com/oauth/token", _js_obj({
         "method": "POST",
-        "headers": {"Content-Type": "application/x-www-form-urlencoded"},
+        "headers": _js_obj({"Content-Type": "application/x-www-form-urlencoded"}),
         "body": params,
-    })
-    token_resp = await fetch(token_req)
+    }))
     if not token_resp.ok:
         error_text = await token_resp.text()
         return Response.new(json.dumps({"error": f"Kakao token exchange failed: {error_text}"}), headers=headers, status=401)
@@ -453,10 +456,10 @@ async def _handle_auth_kakao_token(request, env, headers):
 
     # 2. Get user info
     user_headers = Headers.new([("Authorization", f"Bearer {access_token}")])
-    user_resp = await fetch("https://kapi.kakao.com/v2/user/me", {
+    user_resp = await fetch("https://kapi.kakao.com/v2/user/me", _js_obj({
         "method": "GET",
         "headers": user_headers,
-    })
+    }))
     if not user_resp.ok:
         return Response.new(json.dumps({"error": "Failed to get Kakao user info"}), headers=headers, status=401)
 
@@ -511,12 +514,11 @@ async def _handle_auth_naver_token(request, env, headers):
     if state:
         params.append("state", state)
 
-    token_req = Request.new("https://nid.naver.com/oauth2.0/token", {
+    token_resp = await fetch("https://nid.naver.com/oauth2.0/token", _js_obj({
         "method": "POST",
-        "headers": {"Content-Type": "application/x-www-form-urlencoded"},
+        "headers": _js_obj({"Content-Type": "application/x-www-form-urlencoded"}),
         "body": params,
-    })
-    token_resp = await fetch(token_req)
+    }))
     if not token_resp.ok:
         error_text = await token_resp.text()
         return Response.new(json.dumps({"error": f"Naver token exchange failed: {error_text}"}), headers=headers, status=401)
@@ -528,10 +530,10 @@ async def _handle_auth_naver_token(request, env, headers):
 
     # 2. Get user info
     user_headers = Headers.new([("Authorization", f"Bearer {access_token}")])
-    user_resp = await fetch("https://openapi.naver.com/v1/nid/me", {
+    user_resp = await fetch("https://openapi.naver.com/v1/nid/me", _js_obj({
         "method": "GET",
         "headers": user_headers,
-    })
+    }))
     if not user_resp.ok:
         return Response.new(json.dumps({"error": "Failed to get Naver user info"}), headers=headers, status=401)
 
