@@ -13,11 +13,12 @@ interface DashboardProps {
     data: SessionData;
     refSession?: SessionData | null;
     onReset: () => void;
+    onHome?: () => void;
 }
 
 type ViewMode = 'overview' | 'analysis';
 
-const Dashboard: React.FC<DashboardProps> = ({ data, refSession, onReset }) => {
+const Dashboard: React.FC<DashboardProps> = ({ data, refSession, onReset, onHome }) => {
     const { t } = useTranslation();
     const [mode, setMode] = useState<ViewMode>('overview');
     const [initialCornerId, setInitialCornerId] = useState<number | null>(null);
@@ -100,10 +101,22 @@ const Dashboard: React.FC<DashboardProps> = ({ data, refSession, onReset }) => {
         <div className="flex flex-col h-screen w-full bg-zinc-950 text-white overflow-hidden">
             {/* Header — only for non-analysis modes */}
             {mode !== 'analysis' && (
-                <header className="flex items-center justify-between px-6 py-3 border-b border-zinc-800 bg-zinc-900/50 backdrop-blur-sm">
-                    <div className="flex items-center gap-4">
+                <header className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 bg-zinc-900/50 backdrop-blur-sm">
+                    <div className="flex items-center gap-3">
+                        {/* Logo */}
+                        <button
+                            onClick={onHome}
+                            className="flex items-center gap-1.5 hover:opacity-80 transition-opacity flex-shrink-0"
+                        >
+                            <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-emerald-400/30 bg-emerald-500/10 text-xs font-bold text-emerald-200">
+                                M
+                            </div>
+                        </button>
+
+                        <div className="h-6 w-px bg-zinc-700 flex-shrink-0" />
+
                         <div className="min-w-0">
-                            <h1 className="text-lg font-bold truncate">
+                            <h1 className="text-sm font-bold truncate">
                                 {data.metadata.venue}
                                 {matchedTrack && (
                                     <span className="ml-2 inline-flex items-center px-2 py-0.5 text-xs font-medium bg-emerald-900/30 text-emerald-400 rounded-full border border-emerald-800/50 align-middle">
@@ -244,6 +257,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, refSession, onReset }) => {
                             data={effectiveData}
                             key="analysis"
                             onBack={onReset}
+                            onHome={onHome}
                             onSwitchToOverview={() => setMode('overview')}
                             matchedTrack={matchedTrack}
                             initialCornerId={initialCornerId}

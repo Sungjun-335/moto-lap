@@ -27,6 +27,7 @@ import { pickBestLap } from '../../utils/lapFilter';
 interface AnalysisDashboardProps {
     data: SessionData;
     onBack?: () => void;
+    onHome?: () => void;
     onSwitchToOverview?: () => void;
     matchedTrack?: { shortName: string; totalLength: number } | null;
     initialCornerId?: number | null;
@@ -136,7 +137,7 @@ const ResizeHandle: React.FC<{
     );
 };
 
-const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onSwitchToOverview, matchedTrack, initialCornerId, onInitialCornerHandled, initialRefSession, autoOpenReport, onAutoOpenReportHandled }) => {
+const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onHome, onSwitchToOverview, matchedTrack, initialCornerId, onInitialCornerHandled, initialRefSession, autoOpenReport, onAutoOpenReportHandled }) => {
     const { t } = useTranslation();
 
     // If a REF session was passed from session list pair-select, use its best lap
@@ -461,17 +462,18 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
         <div className="flex flex-col h-full bg-zinc-950">
             {/* Combined Header */}
             <header className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 bg-zinc-900/50 backdrop-blur-sm flex-shrink-0 relative z-10">
-                {/* Left: Back + Venue + Mode Switcher */}
+                {/* Left: Logo + Back + Venue + Mode Switcher */}
                 <div className="flex items-center space-x-3 min-w-0">
-                    {onBack && (
-                        <button
-                            onClick={onBack}
-                            className="flex items-center justify-center w-7 h-7 text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-md transition-colors"
-                            title={t.analysisDashboard.backToSessions}
-                        >
-                            <ArrowLeft size={14} />
-                        </button>
-                    )}
+                    {/* Logo */}
+                    <button
+                        onClick={onHome}
+                        className="flex items-center gap-1.5 hover:opacity-80 transition-opacity flex-shrink-0"
+                    >
+                        <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-emerald-400/30 bg-emerald-500/10 text-xs font-bold text-emerald-200">
+                            M
+                        </div>
+                    </button>
+                    <div className="h-6 w-px bg-zinc-700 flex-shrink-0" />
                     <div className="min-w-0">
                         <h1 className="text-sm font-bold truncate">
                             {data.metadata.venue}
@@ -581,9 +583,8 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
 
                 </div>
 
-                {/* Right: AI Report + Playback + Times */}
-                <div className="flex items-center space-x-3 flex-shrink-0">
-                    {/* AI Report */}
+                {/* Right: AI Report + Back */}
+                <div className="flex items-center space-x-2 flex-shrink-0">
                     <button
                         onClick={handleGenerateReport}
                         className="relative flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md border transition-colors
@@ -596,7 +597,15 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
                             <span className="absolute -top-1 -right-1 w-2 h-2 bg-violet-400 rounded-full" />
                         )}
                     </button>
-                    {/* What-If — TODO: 추후 구현 예정 */}
+                    {onBack && (
+                        <button
+                            onClick={onBack}
+                            className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-md transition-colors"
+                        >
+                            <ArrowLeft size={12} />
+                            {t.analysisDashboard.backToSessions}
+                        </button>
+                    )}
                 </div>
             </header>
 
