@@ -9,7 +9,7 @@ import { useAnalysisState } from './useAnalysisState';
 import CornerAnalysisPanel from './CornerAnalysisPanel';
 import { CHART_REGISTRY, getDefaultVisibleCharts } from './chartRegistry';
 import LapMetricsSummary from './LapMetricsSummary';
-import RiderStatsCard from './RiderStatsCard';
+// RiderStatsCard removed from UI — rider level analysis is done via AI report only
 import ReportModal from './ReportModal';
 import { collectReportData, buildReportPrompt, generateReport, fetchVenueStats, computeSessionMetrics } from '../../utils/reportApi';
 import type { VenueStats } from '../../utils/reportApi';
@@ -754,7 +754,6 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onH
                                 <X size={14} />
                             </button>
                             <LapMetricsSummary refMetrics={refMetrics} anaMetrics={anaMetrics} />
-                            <RiderStatsCard metrics={sessionMetrics} venue={data.metadata.venue} stats={venueStats} />
                         </div>
                     )}
 
