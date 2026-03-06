@@ -374,7 +374,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onH
                 setHasSavedReport(true);
                 // Auto-save to IndexedDB
                 if (data.id) {
-                    saveReport(data.id, refLapIndex, anaLapIndex, lang, report).catch(() => {});
+                    saveReport(data.id, refLapIndex, anaLapIndex, lang, report, { venue: data.metadata.venue, date: data.metadata.date }).catch(() => {});
                 }
             }
         } catch (err: unknown) {

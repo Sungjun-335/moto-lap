@@ -125,6 +125,7 @@ export const ko: Translations = {
         selectRefPrompt: 'REF \uc138\uc158\uc744 \uc120\ud0dd\ud558\uc138\uc694',
         cancelSelection: '\uc120\ud0dd \ucde8\uc18c',
         startAnalysis: '\ubd84\uc11d \uc2dc\uc791',
+        pastReports: '\uc800\uc7a5\ub41c \ub9ac\ud3ec\ud2b8',
     },
     dashboard: {
         backToSessions: '\uc138\uc158 \ubaa9\ub85d\uc73c\ub85c',

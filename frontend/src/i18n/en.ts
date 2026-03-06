@@ -125,6 +125,7 @@ export const en: Translations = {
         selectRefPrompt: 'Select REF session',
         cancelSelection: 'Cancel',
         startAnalysis: 'Start Analysis',
+        pastReports: 'Saved Reports',
     },
     dashboard: {
         backToSessions: 'Back to Sessions',

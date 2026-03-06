@@ -1,9 +1,12 @@
-import React, { useState, useMemo } from 'react';
-import { Plus, Trash2, HardDrive, Loader2, Trophy, X, ArrowRight, ArrowLeft, FileText, User } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Plus, Trash2, HardDrive, Loader2, Trophy, X, ArrowRight, ArrowLeft, FileText, User, Sparkles } from 'lucide-react';
 import type { SessionData, SessionSummary } from '../types';
 import { useTranslation } from '../i18n/context';
 import { formatLapTime } from '../utils/formatLapTime';
 import { pickBestLap } from '../utils/lapFilter';
+import { listAllReports, deleteReport } from '../utils/sessionStorage';
+import type { StoredReport } from '../utils/sessionStorage';
+import { renderMarkdown, markdownStyles } from '../utils/markdownRenderer';
 
 /** Format date string like "2025-03-06" to localized form */
 function formatDate(dateStr: string, locale: string): string {
@@ -47,6 +50,8 @@ const SessionList: React.FC<SessionListProps> = ({
 }) => {
     const { t, locale } = useTranslation();
     const [selectedAnaId, setSelectedAnaId] = useState<string | null>(null);
+    const [orphanReports, setOrphanReports] = useState<StoredReport[]>([]);
+    const [viewingReport, setViewingReport] = useState<StoredReport | null>(null);
     const [selectedRefId, setSelectedRefId] = useState<string | null>(null);
 
     // Look up session name by id
@@ -89,11 +94,23 @@ const SessionList: React.FC<SessionListProps> = ({
         setSelectedAnaId(null);
         setSelectedRefId(null);
     };
+    // Load orphan reports (reports whose session no longer exists)
+    useEffect(() => {
+        listAllReports().then(allReports => {
+            const allSessionIds = new Set([
+                ...sessions.map(s => s.id).filter(Boolean),
+                ...savedSessions.map(s => s.id),
+            ]);
+            const orphans = allReports.filter(r => !allSessionIds.has(r.sessionId));
+            setOrphanReports(orphans);
+        });
+    }, [sessions, savedSessions]);
+
     // Merge: show in-memory sessions + saved sessions not yet in memory
     const inMemoryIds = new Set(sessions.map(s => s.id).filter(Boolean));
     const savedOnly = savedSessions.filter(s => !inMemoryIds.has(s.id));
 
-    const hasAny = sessions.length > 0 || savedOnly.length > 0;
+    const hasAny = sessions.length > 0 || savedOnly.length > 0 || orphanReports.length > 0;
 
     // Group by venue → rider+bike
     type CardItem =
@@ -325,6 +342,83 @@ const SessionList: React.FC<SessionListProps> = ({
                             </div>
                         </div>
                     ))}
+                    {/* Orphan Reports — reports from deleted sessions */}
+                    {orphanReports.length > 0 && (
+                        <div>
+                            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                                <span className="w-1.5 h-5 bg-violet-500 rounded-full" />
+                                {t.sessions.pastReports}
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pl-3">
+                                {orphanReports.map(report => (
+                                    <div
+                                        key={report.id}
+                                        onClick={() => setViewingReport(report)}
+                                        className="bg-zinc-900 border border-zinc-800 hover:border-violet-500/50 rounded-xl p-4 cursor-pointer transition group"
+                                    >
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <Sparkles size={14} className="text-violet-400" />
+                                            <span className="text-sm font-medium text-white">
+                                                {report.venue || 'AI Report'}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-zinc-500">
+                                            {report.date ? formatDate(report.date, locale) + ' • ' : ''}
+                                            L{report.anaLapIndex} vs L{report.refLapIndex} • {report.lang.toUpperCase()}
+                                        </p>
+                                        <p className="text-[10px] text-zinc-600 mt-1">
+                                            {new Date(report.savedAt).toLocaleDateString(locale === 'ko' ? 'ko-KR' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                        </p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Report Viewer Modal */}
+            {viewingReport && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+                    onClick={(e) => { if (e.target === e.currentTarget) setViewingReport(null); }}
+                >
+                    <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-[95vw] max-w-3xl max-h-[85vh] flex flex-col shadow-2xl">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
+                            <div className="flex items-center gap-2">
+                                <Sparkles size={16} className="text-violet-400" />
+                                <span className="font-bold text-white">{viewingReport.venue || 'AI Report'}</span>
+                                <span className="text-xs text-zinc-500">
+                                    {viewingReport.date ? formatDate(viewingReport.date, locale) : ''} • L{viewingReport.anaLapIndex} vs L{viewingReport.refLapIndex}
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => {
+                                        deleteReport(viewingReport.id).then(() => {
+                                            setOrphanReports(prev => prev.filter(r => r.id !== viewingReport.id));
+                                            setViewingReport(null);
+                                        });
+                                    }}
+                                    className="text-xs text-zinc-500 hover:text-red-400 transition px-2 py-1"
+                                >
+                                    <Trash2 size={14} />
+                                </button>
+                                <button
+                                    onClick={() => setViewingReport(null)}
+                                    className="text-zinc-400 hover:text-white transition p-1"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="flex-1 overflow-auto px-6 py-4">
+                            <div
+                                className={markdownStyles}
+                                dangerouslySetInnerHTML={{ __html: renderMarkdown(viewingReport.report) }}
+                            />
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

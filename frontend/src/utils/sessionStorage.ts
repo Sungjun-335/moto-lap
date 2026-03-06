@@ -104,6 +104,8 @@ export interface StoredReport {
     lang: 'ko' | 'en';
     report: string;
     savedAt: number;
+    venue?: string;
+    date?: string;
 }
 
 function makeReportId(sessionId: string, refLapIndex: number, anaLapIndex: number, lang: 'ko' | 'en'): string {
@@ -116,6 +118,7 @@ export async function saveReport(
     anaLapIndex: number,
     lang: 'ko' | 'en',
     report: string,
+    meta?: { venue?: string; date?: string },
 ): Promise<void> {
     const db = await getDB();
     const stored: StoredReport = {
@@ -126,6 +129,8 @@ export async function saveReport(
         lang,
         report,
         savedAt: Date.now(),
+        venue: meta?.venue,
+        date: meta?.date,
     };
     await db.put(REPORTS_STORE, stored);
 }
