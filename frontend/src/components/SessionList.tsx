@@ -5,6 +5,21 @@ import { useTranslation } from '../i18n/context';
 import { formatLapTime } from '../utils/formatLapTime';
 import { pickBestLap } from '../utils/lapFilter';
 
+/** Format date string like "2025-03-06" to localized form */
+function formatDate(dateStr: string, locale: string): string {
+    if (!dateStr) return '';
+    const parts = dateStr.split(/[-/.]/);
+    if (parts.length >= 3) {
+        const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        if (!isNaN(d.getTime())) {
+            return d.toLocaleDateString(locale === 'ko' ? 'ko-KR' : 'en-US', {
+                year: 'numeric', month: 'long', day: 'numeric',
+            });
+        }
+    }
+    return dateStr;
+}
+
 interface SessionListProps {
     sessions: SessionData[];
     savedSessions: SessionSummary[];
@@ -30,7 +45,7 @@ const SessionList: React.FC<SessionListProps> = ({
     onPairSelect,
     onBack,
 }) => {
-    const { t } = useTranslation();
+    const { t, locale } = useTranslation();
     const [selectedAnaId, setSelectedAnaId] = useState<string | null>(null);
     const [selectedRefId, setSelectedRefId] = useState<string | null>(null);
 
@@ -234,9 +249,9 @@ const SessionList: React.FC<SessionListProps> = ({
                                                             <div className="absolute -top-2 -left-2 px-2 py-0.5 bg-blue-600 text-white text-[10px] font-bold rounded-md shadow-lg">REF</div>
                                                         )}
                                                         <div className="flex justify-between items-start mb-1">
-                                                            <div className="flex items-center gap-2">
+                                                            <div className="flex items-center gap-2 flex-wrap">
                                                                 <span className="text-sm font-medium text-white group-hover:text-blue-400 transition">
-                                                                    {meta.date} {meta.time}
+                                                                    {formatDate(meta.date, locale)} {meta.time}
                                                                 </span>
                                                                 {!isMemory && <HardDrive size={12} className="text-zinc-600" />}
                                                                 {meta.condition && (
@@ -246,6 +261,15 @@ const SessionList: React.FC<SessionListProps> = ({
                                                                             : 'bg-blue-900/40 text-blue-400 border border-blue-800/50'
                                                                     }`}>
                                                                         {meta.condition === 'dry' ? t.upload.conditionDry : t.upload.conditionWet}
+                                                                    </span>
+                                                                )}
+                                                                {meta.tuning && (
+                                                                    <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${
+                                                                        meta.tuning === 'stock'
+                                                                            ? 'bg-zinc-700/60 text-zinc-300 border border-zinc-600/50'
+                                                                            : 'bg-orange-900/40 text-orange-400 border border-orange-800/50'
+                                                                    }`}>
+                                                                        {meta.tuning === 'stock' ? t.upload.tuningStock : t.upload.tuningTuned}
                                                                     </span>
                                                                 )}
                                                             </div>

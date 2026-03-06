@@ -161,8 +161,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, on
     const [matchedTrack, setMatchedTrack] = useState<Track | null>(null);
 
     const [bikeModel, setBikeModel] = useState('');
-    const [riderName, setRiderName] = useState('');
-    const [savedRiderNames, setSavedRiderNames] = useState<string[]>([]);
+    const [riderName, setRiderName] = useState(() => getSavedRiderNames()[0] || '');
+    const [savedRiderNames, setSavedRiderNames] = useState<string[]>(getSavedRiderNames);
     const [showRiderDropdown, setShowRiderDropdown] = useState(false);
     const riderInputRef = useRef<HTMLInputElement>(null);
     const riderDropdownRef = useRef<HTMLDivElement>(null);
@@ -173,19 +173,12 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, on
     const [fileName, setFileName] = useState('');
 
     const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
-
-    // Load saved rider names on mount
-    useEffect(() => {
-        setSavedRiderNames(getSavedRiderNames());
-    }, []);
+    const riderWrapperRef = useRef<HTMLDivElement>(null);
 
     // Close dropdown on outside click
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
-            if (
-                riderDropdownRef.current && !riderDropdownRef.current.contains(e.target as Node) &&
-                riderInputRef.current && !riderInputRef.current.contains(e.target as Node)
-            ) {
+            if (riderWrapperRef.current && !riderWrapperRef.current.contains(e.target as Node)) {
                 setShowRiderDropdown(false);
             }
         };
@@ -586,7 +579,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, on
                 <div className="mb-6 p-4 bg-zinc-800/50 rounded-xl border border-zinc-700/50">
                     <div className="flex flex-wrap items-end gap-4">
                         {/* Rider Name with autocomplete */}
-                        <div className="flex flex-col gap-1 min-w-[140px] flex-1 relative">
+                        <div ref={riderWrapperRef} className="flex flex-col gap-1 min-w-[140px] flex-1 relative">
                             <label className="text-xs text-zinc-500">{t.upload.riderName}</label>
                             <div className="relative">
                                 <input
