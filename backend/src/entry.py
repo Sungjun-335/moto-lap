@@ -186,7 +186,11 @@ async def _call_gemini(prompt, env: Any) -> str:
 
     req_body: Dict[str, Any] = {
         "contents": [{"parts": [{"text": user_text}]}],
-        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 65536},
+        "generationConfig": {
+            "temperature": 0.7,
+            "maxOutputTokens": 16384,
+            "thinkingConfig": {"thinkingBudget": 0},
+        },
     }
 
     if system_text:
