@@ -61,11 +61,11 @@ FRONTEND_URL=<frontend-origin-for-cors>
 
 ### Frontend Architecture
 
-**No router, no Redux.** View state is a simple state machine in `App.tsx`: `'landing' | 'list' | 'upload' | 'analysis' | 'track-editor'`. All session state lives in App-level `useState`. Google OAuth authentication via `AuthContext` wraps the app; `useAuth()` provides user info and `isAdmin` flag for admin-only features (track editor). On mount, App fetches `/api/tracks` to replace bundled track data with DB-sourced data via `setTracks()`.
+**No router, no Redux.** View state is a simple state machine in `App.tsx`: `'landing' | 'list' | 'upload' | 'analysis' | 'track-editor'`. All session state lives in App-level `useState`. Google OAuth authentication via `AuthContext` wraps the app; `useAuth()` provides user info and `isAdmin` flag for admin-only features (track editor). On mount, App fetches `/api/tracks` to replace bundled track data with DB-sourced data via `setTracks()`. Header integrates logo inline (no separate logo bar).
 
 **Data flow:**
-1. CSV upload → `aimParser.ts` (parse + metadata extraction) → `cornerDetection.ts` (client-side) → `SessionData`
-2. Session saved to IndexedDB via `sessionStorage.ts` (DB: `motolap-sessions`, stores: `sessions`, `reports`)
+1. CSV upload → `aimParser.ts` (parse + metadata extraction) → `cornerDetection.ts` (client-side) → `SessionData` (includes `tuning: 'stock' | 'tuned'`)
+2. Session saved to IndexedDB via `sessionStorage.ts` (DB: `motolap-sessions`, stores: `sessions`, `reports`). Reports persist independently — viewable even after session deletion.
 3. Analysis mode: `alignLaps()` creates `AnalysisPoint[]` (distance-based interpolation, time delta)
 4. All chart state managed by `useAnalysisState` hook — lap selection, zoom/brush, hover, playback, corner ranges
 5. Sessions can be loaded from IndexedDB via `sessionReconstruct.ts` (re-runs lap segmentation, corner detection, metrics)
@@ -123,9 +123,11 @@ FRONTEND_URL=<frontend-origin-for-cors>
 | `backend/schema.sql` | D1 schema: Users, Tracks, Sessions, Corners (driving_json), LapMetrics |
 | `backend/migrations/002_add_users.sql` | D1 migration: add Users table |
 | `backend/migrations/003_add_tracks.sql` | D1 migration: add Tracks table |
+| `backend/migrations/005_add_tuning.sql` | D1 migration: add tuning column to Sessions |
 | `frontend/src/components/TrackEditor.tsx` | Track editor iframe wrapper (postMessage navigation) |
 | `frontend/public/track-editor.html` | Leaflet-based track editor (tile selector, corner cards, DB load/save) |
-| `frontend/src/components/Analysis/ReportCharts.tsx` | AI report inline charts (speed overlay + corner delta bars) |
+| `frontend/src/components/Analysis/ReportCharts.tsx` | AI report inline charts (speed overlay + corner delta bars + corner mini charts) |
+| `frontend/src/utils/reportApi.ts` | Report data collection, Gemini prompt construction, report storage |
 
 ### Formula Metrics Pipeline
 
@@ -179,7 +181,7 @@ preprocess.apply(df)
 **DB 테이블:**
 - `Users` — Google OAuth 사용자 (google_id, email, name, picture_url)
 - `Tracks` — 트랙/서킷 정의 (centerline, corners, boundaries, editor_data JSON)
-- `Sessions` — user_id FK로 Users 연결
+- `Sessions` — user_id FK로 Users 연결, `tuning` (stock/tuned) 컬럼
 - `LapMetrics` — 랩별 BRK/CRN/TPS/CST 시간·비율·거리 + max_lean + g_sum
 - `Corners.driving_json` — driving dict 전체 JSON 저장
 
@@ -236,6 +238,20 @@ Admin check uses email whitelist (`ADMIN_EMAILS` in both `AuthContext.tsx` and `
 - Tile sources: ArcGIS Satellite, Google Satellite, OpenStreetMap, CartoDB Dark/Light, Stamen Toner
 
 ## Progress Log
+
+### 2026-03-06
+- **Bike tuning/stock classification** (full stack): SessionData.tuning field, FileUpload UI, D1 migration (005), backend API, SessionList badge
+- **AI report corner mini charts**: per-corner speed/G-force mini charts in ReportCharts.tsx
+- **Header logo integration**: removed separate logo bar, integrated M logo inline in Dashboard/AnalysisDashboard headers
+- **Overview/analysis UI consistency**: AI report button + session list button accessible from analysis view
+- **Rider name auto-save + dropdown**: recent rider names stored, auto-fill + dropdown selection in FileUpload
+- **Session list Korean dates + tuning badges**: locale-aware date formatting, STOCK/TUNED badge display
+- **Gemini API timeout fix**: disabled thinking (thinkingBudget: 0), reduced maxOutputTokens to 16384
+- **Report preservation after session deletion**: StoredReport stores venue/date metadata, orphaned reports viewable in SessionList with markdown viewer modal
+- **RiderStatsCard UI removal**: removed from AnalysisDashboard, rider level analysis moved to AI report only
+- **AI report session overview metadata**: rider, bike, condition, tuning, session type, event name included in prompt
+- **Rider level analysis prompt overhaul**: percentile table format, strength/weakness analysis, comprehensive evaluation instructions
+- D1 migration: `005_add_tuning.sql` (Sessions.tuning column)
 
 ### 2026-03-01
 - Chart double-click expand modal (AnalysisDashboard + AnalysisChartWrapper)
