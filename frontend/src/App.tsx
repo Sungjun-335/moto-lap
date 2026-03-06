@@ -122,6 +122,21 @@ function App() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white selection:bg-blue-500/30">
+      {/* Global logo bar — shown on all screens except landing */}
+      {view !== 'landing' && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-zinc-950 border-b border-zinc-800/50 flex-shrink-0">
+          <button
+            onClick={() => setView('landing')}
+            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+          >
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-emerald-400/30 bg-emerald-500/10 text-xs font-bold text-emerald-200">
+              M
+            </div>
+            <span className="text-xs uppercase tracking-[0.2em] text-emerald-200/80 font-medium">motolap</span>
+          </button>
+        </div>
+      )}
+
       {view === 'landing' && (
         <Landing
           onStart={() => setView('upload')}

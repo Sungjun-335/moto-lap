@@ -1,5 +1,5 @@
-import React, { useCallback, useState } from 'react';
-import { Upload, FileText, AlertCircle, MapPin } from 'lucide-react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
+import { Upload, FileText, AlertCircle, MapPin, ChevronDown, X } from 'lucide-react';
 import { parseAimCsv, MissingColumnError } from '../utils/aimParser';
 import { detectCornersForSession } from '../utils/cornerDetection';
 import { matchTrack } from '../utils/trackMatcher';
@@ -124,6 +124,26 @@ interface BatchProgress {
     completed: number;
 }
 
+const RIDER_NAMES_KEY = 'motolap-rider-names';
+
+function getSavedRiderNames(): string[] {
+    try {
+        const raw = localStorage.getItem(RIDER_NAMES_KEY);
+        if (!raw) return [];
+        const arr = JSON.parse(raw);
+        return Array.isArray(arr) ? arr : [];
+    } catch { return []; }
+}
+
+function saveRiderName(name: string) {
+    if (!name.trim()) return;
+    const names = getSavedRiderNames();
+    const trimmed = name.trim();
+    const filtered = names.filter(n => n !== trimmed);
+    filtered.unshift(trimmed); // most recent first
+    localStorage.setItem(RIDER_NAMES_KEY, JSON.stringify(filtered.slice(0, 20)));
+}
+
 const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, onCancel }) => {
     const { t } = useTranslation();
     const [isDragging, setIsDragging] = useState(false);
@@ -142,12 +162,36 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, on
 
     const [bikeModel, setBikeModel] = useState('');
     const [riderName, setRiderName] = useState('');
+    const [savedRiderNames, setSavedRiderNames] = useState<string[]>([]);
+    const [showRiderDropdown, setShowRiderDropdown] = useState(false);
+    const riderInputRef = useRef<HTMLInputElement>(null);
+    const riderDropdownRef = useRef<HTMLDivElement>(null);
     const [condition, setCondition] = useState<'dry' | 'wet'>('dry');
+    const [tuning, setTuning] = useState<'stock' | 'tuned'>('stock');
     const [sessionType, setSessionType] = useState<'practice' | 'race' | 'warmup' | 'trackday'>('practice');
     const [eventName, setEventName] = useState('');
     const [fileName, setFileName] = useState('');
 
     const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
+
+    // Load saved rider names on mount
+    useEffect(() => {
+        setSavedRiderNames(getSavedRiderNames());
+    }, []);
+
+    // Close dropdown on outside click
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (
+                riderDropdownRef.current && !riderDropdownRef.current.contains(e.target as Node) &&
+                riderInputRef.current && !riderInputRef.current.contains(e.target as Node)
+            ) {
+                setShowRiderDropdown(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     const processFile = async (file: File, mapping?: Record<string, string>) => {
         setError(null);
@@ -252,6 +296,12 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, on
     const handleConfirmSelection = async () => {
         if (!parsedData) return;
 
+        // Save rider name for future use
+        if (riderName.trim()) {
+            saveRiderName(riderName);
+            setSavedRiderNames(getSavedRiderNames());
+        }
+
         setAnalyzing(true);
         try {
             // Filter selected laps first
@@ -282,6 +332,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, on
                     riderName: riderName || undefined,
                     fileName: fileName || undefined,
                     condition,
+                    tuning,
                     sessionType,
                     eventName: sessionType === 'race' && eventName ? eventName : undefined,
                 },
@@ -302,6 +353,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, on
                     riderName: riderName || undefined,
                     fileName: fileName || undefined,
                     condition,
+                    tuning,
                     sessionType,
                     eventName: sessionType === 'race' && eventName ? eventName : undefined,
                 },
@@ -533,16 +585,66 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, on
                 {/* Session Info Form */}
                 <div className="mb-6 p-4 bg-zinc-800/50 rounded-xl border border-zinc-700/50">
                     <div className="flex flex-wrap items-end gap-4">
-                        {/* Rider Name */}
-                        <div className="flex flex-col gap-1 min-w-[140px] flex-1">
+                        {/* Rider Name with autocomplete */}
+                        <div className="flex flex-col gap-1 min-w-[140px] flex-1 relative">
                             <label className="text-xs text-zinc-500">{t.upload.riderName}</label>
-                            <input
-                                type="text"
-                                value={riderName}
-                                onChange={e => setRiderName(e.target.value)}
-                                placeholder={t.upload.riderNamePlaceholder}
-                                className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-white placeholder-zinc-600 focus:border-blue-500 focus:outline-none"
-                            />
+                            <div className="relative">
+                                <input
+                                    ref={riderInputRef}
+                                    type="text"
+                                    value={riderName}
+                                    onChange={e => {
+                                        setRiderName(e.target.value);
+                                        setShowRiderDropdown(true);
+                                    }}
+                                    onFocus={() => { if (savedRiderNames.length > 0) setShowRiderDropdown(true); }}
+                                    placeholder={t.upload.riderNamePlaceholder}
+                                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 pr-14 text-sm text-white placeholder-zinc-600 focus:border-blue-500 focus:outline-none"
+                                />
+                                <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+                                    {riderName && (
+                                        <button
+                                            type="button"
+                                            onClick={() => { setRiderName(''); riderInputRef.current?.focus(); }}
+                                            className="p-0.5 text-zinc-500 hover:text-zinc-300 transition"
+                                        >
+                                            <X size={12} />
+                                        </button>
+                                    )}
+                                    {savedRiderNames.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowRiderDropdown(prev => !prev)}
+                                            className="p-0.5 text-zinc-500 hover:text-zinc-300 transition"
+                                        >
+                                            <ChevronDown size={14} />
+                                        </button>
+                                    )}
+                                </div>
+                                {showRiderDropdown && savedRiderNames.length > 0 && (
+                                    <div
+                                        ref={riderDropdownRef}
+                                        className="absolute z-50 top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl max-h-40 overflow-auto"
+                                    >
+                                        {savedRiderNames
+                                            .filter(n => !riderName || n.toLowerCase().includes(riderName.toLowerCase()))
+                                            .map(name => (
+                                                <button
+                                                    key={name}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setRiderName(name);
+                                                        setShowRiderDropdown(false);
+                                                    }}
+                                                    className="w-full text-left px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition"
+                                                >
+                                                    {name}
+                                                </button>
+                                            ))
+                                        }
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         {/* Bike Model */}
@@ -582,6 +684,35 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, on
                                     }`}
                                 >
                                     {t.upload.conditionWet}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Tuning Toggle */}
+                        <div className="flex flex-col gap-1">
+                            <label className="text-xs text-zinc-500">{t.upload.tuning}</label>
+                            <div className="flex rounded-lg overflow-hidden border border-zinc-700">
+                                <button
+                                    type="button"
+                                    onClick={() => setTuning('stock')}
+                                    className={`px-3 py-1.5 text-xs font-bold transition ${
+                                        tuning === 'stock'
+                                            ? 'bg-zinc-600 text-white'
+                                            : 'bg-zinc-900 text-zinc-500 hover:text-zinc-300'
+                                    }`}
+                                >
+                                    {t.upload.tuningStock}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setTuning('tuned')}
+                                    className={`px-3 py-1.5 text-xs font-bold transition ${
+                                        tuning === 'tuned'
+                                            ? 'bg-orange-600 text-white'
+                                            : 'bg-zinc-900 text-zinc-500 hover:text-zinc-300'
+                                    }`}
+                                >
+                                    {t.upload.tuningTuned}
                                 </button>
                             </div>
                         </div>

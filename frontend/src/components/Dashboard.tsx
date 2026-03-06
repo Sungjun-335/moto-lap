@@ -3,7 +3,7 @@ import type { SessionData, Lap } from '../types';
 import Overview from './Overview';
 import AnalysisDashboard from './Analysis/AnalysisDashboard';
 import ReferenceSelector from './Analysis/ReferenceSelector';
-import { LayoutDashboard, LineChart, MapPin } from 'lucide-react';
+import { LayoutDashboard, LineChart, MapPin, Sparkles, ArrowLeft } from 'lucide-react';
 import { getTrackById } from '../data/tracks';
 import { useTranslation } from '../i18n/context';
 import { formatLapTime } from '../utils/formatLapTime';
@@ -21,6 +21,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, refSession, onReset }) => {
     const { t } = useTranslation();
     const [mode, setMode] = useState<ViewMode>('overview');
     const [initialCornerId, setInitialCornerId] = useState<number | null>(null);
+    const [openReportOnSwitch, setOpenReportOnSwitch] = useState(false);
     const matchedTrack = useMemo(() =>
         data.metadata.trackId ? getTrackById(data.metadata.trackId) : null
     , [data.metadata.trackId]);
@@ -89,6 +90,11 @@ const Dashboard: React.FC<DashboardProps> = ({ data, refSession, onReset }) => {
         setInitialCornerId(cornerId);
         setMode('analysis');
     };
+
+    const handleOpenReport = useCallback(() => {
+        setOpenReportOnSwitch(true);
+        setMode('analysis');
+    }, []);
 
     return (
         <div className="flex flex-col h-screen w-full bg-zinc-950 text-white overflow-hidden">
@@ -190,12 +196,26 @@ const Dashboard: React.FC<DashboardProps> = ({ data, refSession, onReset }) => {
                         )}
                     </div>
 
-                    <button
-                        onClick={onReset}
-                        className="px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors flex-shrink-0"
-                    >
-                        {t.dashboard.backToSessions}
-                    </button>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                        {/* AI Report button — available in Overview too */}
+                        {mode === 'overview' && (
+                            <button
+                                onClick={handleOpenReport}
+                                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors
+                                    bg-violet-600/20 border-violet-500/50 text-violet-300 hover:bg-violet-600/30 hover:text-violet-200"
+                            >
+                                <Sparkles size={13} />
+                                {t.analysisDashboard.aiReport}
+                            </button>
+                        )}
+                        <button
+                            onClick={onReset}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
+                        >
+                            <ArrowLeft size={12} />
+                            {t.dashboard.backToSessions}
+                        </button>
+                    </div>
                 </header>
             )}
 
@@ -229,6 +249,8 @@ const Dashboard: React.FC<DashboardProps> = ({ data, refSession, onReset }) => {
                             initialCornerId={initialCornerId}
                             onInitialCornerHandled={() => setInitialCornerId(null)}
                             initialRefSession={refSession}
+                            autoOpenReport={openReportOnSwitch}
+                            onAutoOpenReportHandled={() => setOpenReportOnSwitch(false)}
                         />
                     )}
                 </div>

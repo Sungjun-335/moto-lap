@@ -38,7 +38,8 @@ CREATE TABLE Sessions (
     created_at TEXT,
     venue TEXT,
     vehicle TEXT,
-    user_id INTEGER REFERENCES Users(id)
+    user_id INTEGER REFERENCES Users(id),
+    tuning TEXT
 );
 
 CREATE TABLE Corners (

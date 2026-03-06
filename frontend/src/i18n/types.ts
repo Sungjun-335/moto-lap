@@ -100,6 +100,9 @@ export interface Translations {
         typeRace: string;
         typeWarmup: string;
         typeTrackday: string;
+        tuning: string;
+        tuningStock: string;
+        tuningTuned: string;
         eventName: string;
         eventNamePlaceholder: string;
         riderName: string;

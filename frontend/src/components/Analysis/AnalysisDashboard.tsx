@@ -32,6 +32,8 @@ interface AnalysisDashboardProps {
     initialCornerId?: number | null;
     onInitialCornerHandled?: () => void;
     initialRefSession?: SessionData | null;
+    autoOpenReport?: boolean;
+    onAutoOpenReportHandled?: () => void;
 }
 
 // Chart ID sets for smoothing lookup (module scope to avoid re-creation on render)
@@ -134,7 +136,7 @@ const ResizeHandle: React.FC<{
     );
 };
 
-const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onSwitchToOverview, matchedTrack, initialCornerId, onInitialCornerHandled, initialRefSession }) => {
+const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onSwitchToOverview, matchedTrack, initialCornerId, onInitialCornerHandled, initialRefSession, autoOpenReport, onAutoOpenReportHandled }) => {
     const { t } = useTranslation();
 
     // If a REF session was passed from session list pair-select, use its best lap
@@ -348,7 +350,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
     useEffect(() => {
         if (!data.metadata.venue) return;
         let cancelled = false;
-        fetchVenueStats(data.metadata.venue, sessionMetrics)
+        fetchVenueStats(data.metadata.venue, sessionMetrics, data.metadata.tuning)
             .then(stats => { if (!cancelled && stats) setVenueStats(stats); })
             .catch(() => {});
         return () => { cancelled = true; };
@@ -404,6 +406,14 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
         }
         setReportState({ open: true, status: 'confirm', report: '', error: '' });
     }, [getCacheKey, reportLang, data.id, refLapIndex, anaLapIndex]);
+
+    // Auto-open report when navigated from Overview with AI Report button
+    useEffect(() => {
+        if (autoOpenReport) {
+            handleGenerateReport();
+            onAutoOpenReportHandled?.();
+        }
+    }, [autoOpenReport]);
 
     // Confirm screen → generate
     const handleConfirmGenerate = useCallback(() => {

@@ -573,25 +573,39 @@ async def _handle_venue_stats(request, env, headers):
     body = json.loads(bytes(content_bytes).decode("utf-8"))
     venue = body.get("venue", "")
     user_metrics = body.get("metrics")  # optional: {lap_time_s, max_braking_g, ...}
+    tuning = body.get("tuning")  # optional: 'stock' | 'tuned'
 
     if not venue:
         return Response.new(json.dumps({"error": "Missing venue"}), headers=headers, status=400)
 
+    # Build tuning filter clause
+    tuning_clause = " AND s.tuning = ?" if tuning else ""
+
     # Query A: LapMetrics per session
-    lap_rows = await env.DB.prepare(
+    lap_query = (
         "SELECT lm.session_id, lm.lap_id, lm.lap_time_s, lm.mean_g_sum, lm.max_g_sum, lm.max_lean_deg"
         " FROM LapMetrics lm"
         " JOIN Sessions s ON lm.session_id = s.id"
         " WHERE s.venue = ? AND lm.lap_time_s IS NOT NULL"
-    ).bind(venue).all()
+        + tuning_clause
+    )
+    if tuning:
+        lap_rows = await env.DB.prepare(lap_query).bind(venue, tuning).all()
+    else:
+        lap_rows = await env.DB.prepare(lap_query).bind(venue).all()
 
     # Query B: Corners with driving data
-    corner_rows = await env.DB.prepare(
+    corner_query = (
         "SELECT c.session_id, c.lap_id, c.driving_json"
         " FROM Corners c"
         " JOIN Sessions s ON c.session_id = s.id"
         " WHERE s.venue = ? AND c.driving_json IS NOT NULL"
-    ).bind(venue).all()
+        + tuning_clause
+    )
+    if tuning:
+        corner_rows = await env.DB.prepare(corner_query).bind(venue, tuning).all()
+    else:
+        corner_rows = await env.DB.prepare(corner_query).bind(venue).all()
 
     # Build session -> laps mapping
     session_laps: Dict[int, list] = {}
@@ -1068,9 +1082,12 @@ async def on_fetch(request, env):
             user = await _get_user_from_request(request, env)
             user_id = int(user["sub"]) if user else None
 
+            # Extract tuning from metadata if available (sent via query param or lambda metadata)
+            tuning = lambda_metadata.get("tuning") or metadata.get("tuning") or None
+
             res = await env.DB.prepare(
-                "INSERT INTO Sessions (created_at, venue, vehicle, user_id) VALUES (?, ?, ?, ?)"
-            ).bind(now, venue, vehicle, user_id).run()
+                "INSERT INTO Sessions (created_at, venue, vehicle, user_id, tuning) VALUES (?, ?, ?, ?, ?)"
+            ).bind(now, venue, vehicle, user_id, tuning).run()
             session_id = res.meta.last_row_id
 
             stmt = env.DB.prepare(

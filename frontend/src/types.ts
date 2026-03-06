@@ -90,6 +90,7 @@ export interface SessionData {
         trackId?: string;
         bikeModel?: string;
         condition?: 'dry' | 'wet';
+        tuning?: 'stock' | 'tuned';
         sessionType?: 'practice' | 'race' | 'warmup' | 'trackday';
         eventName?: string;
         fileName?: string;

@@ -781,12 +781,12 @@ export async function generateReport(
 
 // ─── Venue Stats API ───
 
-export async function fetchVenueStats(venue: string, metrics: SessionMetrics): Promise<VenueStats | null> {
+export async function fetchVenueStats(venue: string, metrics: SessionMetrics, tuning?: 'stock' | 'tuned'): Promise<VenueStats | null> {
   try {
     const resp = await apiFetch('/api/stats/venue', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ venue, metrics }),
+      body: JSON.stringify({ venue, metrics, ...(tuning ? { tuning } : {}) }),
     });
     if (!resp.ok) return null;
     return await resp.json();
