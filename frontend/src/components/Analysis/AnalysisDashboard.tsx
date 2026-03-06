@@ -339,18 +339,20 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
         return () => { cancelled = true; };
     }, [hasSavedReport, reportState.open]);
 
-    // Venue stats for rider percentile ranking
+    // Session metrics (always computed locally)
+    const sessionMetrics = useMemo(() => computeSessionMetrics(data), [data]);
+
+    // Venue stats for rider percentile ranking (may be null if backend unavailable)
     const [venueStats, setVenueStats] = useState<VenueStats | null>(null);
 
     useEffect(() => {
         if (!data.metadata.venue) return;
         let cancelled = false;
-        const metrics = computeSessionMetrics(data);
-        fetchVenueStats(data.metadata.venue, metrics)
+        fetchVenueStats(data.metadata.venue, sessionMetrics)
             .then(stats => { if (!cancelled && stats) setVenueStats(stats); })
             .catch(() => {});
         return () => { cancelled = true; };
-    }, [data]);
+    }, [data, sessionMetrics]);
 
     const fetchReport = useCallback(async (lang: 'ko' | 'en') => {
         abortRef.current?.abort();
@@ -360,8 +362,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
         setReportState({ open: true, status: 'loading', report: '', error: '' });
 
         try {
-            const metrics = computeSessionMetrics(data);
-            const rd = collectReportData(data, refLapIndex, anaLapIndex, viewData, cornerDistanceRanges, venueStats ?? undefined, metrics);
+            const rd = collectReportData(data, refLapIndex, anaLapIndex, viewData, cornerDistanceRanges, venueStats ?? undefined, sessionMetrics);
             const prompt = buildReportPrompt(rd, lang);
             const report = await generateReport(prompt, ac.signal);
             if (!ac.signal.aborted) {
@@ -379,7 +380,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
                 setReportState({ open: true, status: 'error', report: '', error: message });
             }
         }
-    }, [data, refLapIndex, anaLapIndex, getCacheKey, venueStats]);
+    }, [data, refLapIndex, anaLapIndex, getCacheKey, venueStats, sessionMetrics]);
 
     // Button click: memory cache → DB cache → confirm screen
     const handleGenerateReport = useCallback(async () => {
@@ -734,7 +735,7 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onS
                                 <X size={14} />
                             </button>
                             <LapMetricsSummary refMetrics={refMetrics} anaMetrics={anaMetrics} />
-                            {venueStats && <RiderStatsCard stats={venueStats} />}
+                            <RiderStatsCard metrics={sessionMetrics} venue={data.metadata.venue} stats={venueStats} />
                         </div>
                     )}
 
