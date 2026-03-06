@@ -110,6 +110,12 @@ export interface ReportData {
   venue: string;
   vehicle: string;
   date: string;
+  riderName?: string;
+  bikeModel?: string;
+  condition?: string;
+  tuning?: string;
+  sessionType?: string;
+  eventName?: string;
   refLapIndex: number;
   anaLapIndex: number;
   refLapTime: number;
@@ -265,6 +271,12 @@ export function collectReportData(
     venue: data.metadata.venue,
     vehicle: data.metadata.vehicle,
     date: data.metadata.date,
+    riderName: data.metadata.riderName,
+    bikeModel: data.metadata.bikeModel,
+    condition: data.metadata.condition,
+    tuning: data.metadata.tuning,
+    sessionType: data.metadata.sessionType,
+    eventName: data.metadata.eventName,
     refLapIndex,
     anaLapIndex,
     refLapTime: refLap?.duration ?? 0,
@@ -388,6 +400,7 @@ Coasting means "a phase where the rider is not accelerating, braking, or corneri
 ### [Analysis Rules and Guidelines]
 
 1. Session Overview
+- Summarize session info: circuit (venue), date, rider, bike (bike_model/vehicle), condition (dry/wet), tuning (stock/tuned), session type, event name. Omit any fields not present.
 - State the total lap time difference to three decimal places, and summarize in one sentence whether the comparison lap is slower or faster than the reference.
 
 2. Top 3 Improvement Points
@@ -449,6 +462,7 @@ G Sum 값은 "타이어 마찰 한계점"이라고 표기해줘. G Sum 최대값
 ### [분석 규칙 및 가이드라인]
 
 1. 세션 개요
+- 세션 정보를 요약하라: 서킷(venue), 날짜(date), 라이더(rider), 바이크(bike_model/vehicle), 노면 상태(condition: dry/wet), 세팅(tuning: stock/tuned), 세션 타입(session_type), 대회명(event_name). 없는 항목은 생략.
 - 두 랩의 총 랩 타임 차이를 소수점 셋째 자리까지 명시하고, 비교 랩이 기준 랩보다 얼마나 느린지(또는 빠른지) 한 문장으로 핵심 결론을 요약한 후,
 
 2. 핵심 개선 포인트 (Top 3)
@@ -598,6 +612,12 @@ function buildDataPayload(rd: ReportData): object {
       venue: rd.venue,
       vehicle: rd.vehicle,
       date: rd.date,
+      rider: rd.riderName || undefined,
+      bike_model: rd.bikeModel || undefined,
+      condition: rd.condition || undefined,
+      tuning: rd.tuning || undefined,
+      session_type: rd.sessionType || undefined,
+      event_name: rd.eventName || undefined,
       ref_lap: { index: rd.refLapIndex, time_s: round3(rd.refLapTime) },
       ana_lap: { index: rd.anaLapIndex, time_s: round3(rd.anaLapTime) },
       time_diff_s: round3(rd.timeDiff),
