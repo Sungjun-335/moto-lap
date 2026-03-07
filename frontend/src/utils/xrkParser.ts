@@ -267,8 +267,12 @@ function parseMetadata(buf: Uint8Array): XrkMetadata {
     const trkMatch = fullText.match(/>([^<\0]+)\0*<TRK/);
     // Track name is usually near the TRK tag preceded by >
     const trkMatch2 = fullText.match(/>([A-Za-z][^<\0]{1,30})\0*.*?<TRK/);
-    if (trkMatch) meta.track = trkMatch[1].trim();
-    else if (trkMatch2) meta.track = trkMatch2[1].trim();
+    // Filter out channel names that could be false positives
+    const invalidTrackNames = /^(GPS|Speed|RPM|TPS|Brake|Throttle|Gear|DistL|Time)/i;
+    const rawTrack = trkMatch?.[1]?.trim() || trkMatch2?.[1]?.trim() || '';
+    if (rawTrack && !invalidTrackNames.test(rawTrack)) {
+        meta.track = rawTrack;
+    }
 
     const tmdMatch = fullText.match(/>(\d{2}\/\d{2}\/\d{4})/);
     if (tmdMatch) meta.date = tmdMatch[1];
@@ -417,7 +421,9 @@ export const parseXrk = (file: File): Promise<SessionData> => {
                 console.log(`[XRK Parser] Segmented ${laps.length} laps`);
 
                 // Determine venue: prefer track name from metadata
-                const venue = meta.track !== 'Unknown' ? meta.track : (meta.competition || 'Unknown');
+                const invalidVenue = /^(GPS|Speed|RPM|TPS|Unknown)$/i;
+                const rawVenue = meta.track !== 'Unknown' ? meta.track : (meta.competition || 'Unknown');
+                const venue = invalidVenue.test(rawVenue) ? 'Unknown' : rawVenue;
 
                 resolve({
                     metadata: {

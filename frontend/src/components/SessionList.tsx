@@ -8,16 +8,24 @@ import { listAllReports, deleteReport } from '../utils/sessionStorage';
 import type { StoredReport } from '../utils/sessionStorage';
 import { renderMarkdown, markdownStyles } from '../utils/markdownRenderer';
 
-/** Format date string like "2025-03-06" to Korean form with weekday */
+/** Format date string to compact Korean form: "8/16 (토)" */
 function formatDate(dateStr: string): string {
     if (!dateStr) return '';
     const parts = dateStr.split(/[-/.]/);
     if (parts.length >= 3) {
-        const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        // Handle both YYYY-MM-DD and DD/MM/YYYY formats
+        let y: number, m: number, day: number;
+        if (Number(parts[0]) > 31) {
+            // YYYY-MM-DD
+            y = Number(parts[0]); m = Number(parts[1]); day = Number(parts[2]);
+        } else {
+            // DD/MM/YYYY
+            day = Number(parts[0]); m = Number(parts[1]); y = Number(parts[2]);
+        }
+        const d = new Date(y, m - 1, day);
         if (!isNaN(d.getTime())) {
-            return d.toLocaleDateString('ko-KR', {
-                year: 'numeric', month: 'long', day: 'numeric', weekday: 'short',
-            });
+            const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
+            return `${m}/${day} (${weekdays[d.getDay()]})`;
         }
     }
     return dateStr;
