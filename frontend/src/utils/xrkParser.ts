@@ -7,7 +7,7 @@ const TAG_H_CHS = '<hCHS';   // Channel header
 const TAG_H_GPS = '<hGPS';   // GPS data point
 const TAG_H_LAP = '<hLAP';   // Lap marker
 const TAG_GPS   = '<GPS';    // GPS closing/channel data
-const TAG_RCR   = '>'; // metadata uses >value<TAG pattern
+// metadata uses >value<TAG pattern (TAG_RCR marker = '>')
 
 // WGS84 constants for ECEF → LLA conversion
 const WGS84_A = 6378137.0;
@@ -190,7 +190,6 @@ function parseGpsPoints(buf: Uint8Array, dv: DataView): GpsPoint[] {
             closeIdx++;
         }
         // The <GPS close tag should be right after our data block
-        const expectedClose = blockStart + dataSize;
         if (closeIdx < gpsDataOffsets.length) {
             const closePos = gpsDataOffsets[closeIdx];
             // Parse (S records after the <GPS tag header (8 bytes)
