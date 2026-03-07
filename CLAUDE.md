@@ -111,6 +111,7 @@ FRONTEND_URL=<frontend-origin-for-cors>
 | `frontend/src/utils/trackMatcher.ts` | GPS-based track identification against known tracks DB |
 | `frontend/src/utils/keyPoints.ts` | Key point detection + label positioning pipeline |
 | `frontend/src/utils/smoothing.ts` | Gaussian smoothing for G-force and Gyro (PRY) fields |
+| `frontend/src/utils/xrkParser.ts` | AIM XRK binary file parser (ECEF→LLA, GPS channels, metadata) |
 | `frontend/src/utils/apiClient.ts` | JWT Bearer token management for authenticated API calls |
 | `frontend/src/auth/AuthContext.tsx` | Google OAuth context (GSI integration, JWT token exchange) |
 | `frontend/src/components/UserMenu.tsx` | User profile menu (login/logout) |
@@ -238,6 +239,14 @@ Admin check uses email whitelist (`ADMIN_EMAILS` in both `AuthContext.tsx` and `
 - Tile sources: ArcGIS Satellite, Google Satellite, OpenStreetMap, CartoDB Dark/Light, Stamen Toner
 
 ## Progress Log
+
+### 2026-03-07
+- **AIM XRK binary parser** (`xrkParser.ts`): Direct XRK file parsing without CSV export. ECEF→LLA coordinate conversion, GPS-derived speed/acceleration/gyro, lap segmentation, metadata extraction (racer, vehicle, track, date/time). FileUpload supports `.xrk` drag-and-drop + batch upload
+- **Session metadata edit**: Pencil icon on session cards opens edit modal (rider, bike, condition, tuning, session type, event name). `updateSessionMetadata()` in sessionStorage.ts updates IndexedDB in-place
+- **Korean date formatting**: SessionList dates always shown as `M/D (요일)` format (e.g. `8/16 (토)`). Handles ISO, English text ("August 16, 2025"), DD/MM/YYYY formats
+- **Venue name filtering**: XRK parser and SessionList filter out channel names (GPS Speed, RPM, etc.) from being displayed as venue/track names
+- **HTML cache prevention**: `worker.js` adds `Cache-Control: no-cache` to HTML responses for immediate deploy propagation
+- Auto-fill rider name and bike model from XRK metadata into FileUpload form
 
 ### 2026-03-06
 - **Bike tuning/stock classification** (full stack): SessionData.tuning field, FileUpload UI, D1 migration (005), backend API, SessionList badge
