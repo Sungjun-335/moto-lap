@@ -126,6 +126,8 @@ export interface Translations {
         cancelSelection: string;
         startAnalysis: string;
         pastReports: string;
+        editSession: string;
+        save: string;
     };
     dashboard: {
         backToSessions: string;

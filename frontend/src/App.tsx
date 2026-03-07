@@ -5,7 +5,7 @@ import Landing from './components/Landing';
 import SessionList from './components/SessionList';
 import TrackEditor from './components/TrackEditor';
 import type { SessionData, SessionSummary } from './types';
-import { saveSession, listSessions, loadSession, deleteSession } from './utils/sessionStorage';
+import { saveSession, listSessions, loadSession, deleteSession, updateSessionMetadata } from './utils/sessionStorage';
 import { reconstructSession } from './utils/sessionReconstruct';
 import { useAuth } from './auth/AuthContext';
 import { apiFetch } from './utils/apiClient';
@@ -120,6 +120,13 @@ function App() {
     setSavedSessions(await listSessions(user?.id));
   };
 
+  const handleSessionMetadataUpdate = async (id: string, metadata: Partial<SessionData['metadata']>) => {
+    await updateSessionMetadata(id, metadata);
+    // Update in-memory sessions
+    setSessions(prev => prev.map(s => s.id === id ? { ...s, metadata: { ...s.metadata, ...metadata } } : s));
+    setSavedSessions(await listSessions(user?.id));
+  };
+
   return (
     <div className="min-h-screen bg-zinc-950 text-white selection:bg-blue-500/30">
       {/* Global logo bar — shown on non-landing, non-analysis screens */}
@@ -156,6 +163,7 @@ function App() {
           onSessionRemove={handleSessionRemove}
           onSavedSessionSelect={handleSavedSessionSelect}
           onSavedSessionDelete={handleSavedSessionDelete}
+          onSessionMetadataUpdate={handleSessionMetadataUpdate}
           onPairSelect={handlePairSelect}
           onBack={() => setView('landing')}
         />

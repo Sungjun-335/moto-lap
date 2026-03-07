@@ -1,6 +1,7 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { Upload, FileText, AlertCircle, MapPin, ChevronDown, X } from 'lucide-react';
 import { parseAimCsv, MissingColumnError } from '../utils/aimParser';
+import { parseXrk } from '../utils/xrkParser';
 import { detectCornersForSession } from '../utils/cornerDetection';
 import { matchTrack } from '../utils/trackMatcher';
 import { computeLapMetrics } from '../utils/formulaMetrics';
@@ -186,13 +187,17 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, on
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    const isXrkFile = (file: File) => file.name.toLowerCase().endsWith('.xrk');
+
     const processFile = async (file: File, mapping?: Record<string, string>) => {
         setError(null);
         setLoading(true);
         setMissingColumns([]); // Reset on new attempt
 
         try {
-            const data = await parseAimCsv(file, mapping);
+            const data = isXrkFile(file)
+                ? await parseXrk(file)
+                : await parseAimCsv(file, mapping);
 
             // Track auto-recognition
             const track = matchTrack(data.dataPoints);
@@ -209,6 +214,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, on
             setFileName(file.name);
             setSelectedLapIndices(new Set(data.laps.map(l => l.index)));
             setBikeModel(data.metadata.vehicle || '');
+            if (data.metadata.user && data.metadata.user !== 'Unknown') {
+                setRiderName(data.metadata.user);
+            }
         } catch (err: any) {
             console.error(err);
             if (err instanceof MissingColumnError) {
@@ -250,7 +258,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, on
             setBatchProgress({ current: i + 1, total, currentFile: file.name, errors, completed: sessions.length });
 
             try {
-                const data = await parseAimCsv(file);
+                const data = isXrkFile(file)
+                    ? await parseXrk(file)
+                    : await parseAimCsv(file);
 
                 const track = matchTrack(data.dataPoints);
                 if (track) {
@@ -378,14 +388,16 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, on
         e.preventDefault();
         setIsDragging(false);
         const allFiles = Array.from(e.dataTransfer.files);
-        const csvFiles = allFiles.filter(f => f.name.endsWith('.csv') || f.type === 'text/csv');
+        const supportedFiles = allFiles.filter(f =>
+            f.name.endsWith('.csv') || f.type === 'text/csv' || f.name.toLowerCase().endsWith('.xrk')
+        );
 
-        if (csvFiles.length === 0) {
+        if (supportedFiles.length === 0) {
             setError(t.upload.pleaseUploadCsv);
-        } else if (csvFiles.length === 1) {
-            processFile(csvFiles[0]);
+        } else if (supportedFiles.length === 1) {
+            processFile(supportedFiles[0]);
         } else {
-            processBatch(csvFiles);
+            processBatch(supportedFiles);
         }
     }, []);
 
@@ -405,8 +417,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, on
         if (files.length === 1) {
             processFile(files[0]);
         } else {
-            const csvFiles = Array.from(files).filter(f => f.name.endsWith('.csv') || f.type === 'text/csv');
-            if (csvFiles.length > 0) processBatch(csvFiles);
+            const supported = Array.from(files).filter(f =>
+                f.name.endsWith('.csv') || f.type === 'text/csv' || f.name.toLowerCase().endsWith('.xrk')
+            );
+            if (supported.length > 0) processBatch(supported);
         }
     };
 
@@ -858,7 +872,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, on
                     <input
                         type="file"
                         className="hidden"
-                        accept=".csv"
+                        accept=".csv,.xrk"
                         multiple
                         onChange={handleChange}
                         disabled={loading || batchProgress !== null}

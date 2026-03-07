@@ -88,6 +88,14 @@ export async function listSessions(userId?: string): Promise<SessionSummary[]> {
     return summaries;
 }
 
+export async function updateSessionMetadata(id: string, metadata: Partial<SessionData['metadata']>): Promise<void> {
+    const db = await getDB();
+    const stored = await db.get(STORE_NAME, id) as StoredSession | undefined;
+    if (!stored) return;
+    stored.metadata = { ...stored.metadata, ...metadata };
+    await db.put(STORE_NAME, stored);
+}
+
 export async function deleteSession(id: string): Promise<void> {
     const db = await getDB();
     await db.delete(STORE_NAME, id);

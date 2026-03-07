@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, Trash2, HardDrive, Loader2, Trophy, X, ArrowRight, ArrowLeft, FileText, User, Sparkles } from 'lucide-react';
+import { Plus, Trash2, HardDrive, Loader2, Trophy, X, ArrowRight, ArrowLeft, FileText, User, Sparkles, Pencil } from 'lucide-react';
 import type { SessionData, SessionSummary } from '../types';
 import { useTranslation } from '../i18n/context';
 import { formatLapTime } from '../utils/formatLapTime';
@@ -8,7 +8,7 @@ import { listAllReports, deleteReport } from '../utils/sessionStorage';
 import type { StoredReport } from '../utils/sessionStorage';
 import { renderMarkdown, markdownStyles } from '../utils/markdownRenderer';
 
-/** Format date string like "2025-03-06" to localized form */
+/** Format date string like "2025-03-06" to localized form with weekday */
 function formatDate(dateStr: string, locale: string): string {
     if (!dateStr) return '';
     const parts = dateStr.split(/[-/.]/);
@@ -16,7 +16,7 @@ function formatDate(dateStr: string, locale: string): string {
         const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
         if (!isNaN(d.getTime())) {
             return d.toLocaleDateString(locale === 'ko' ? 'ko-KR' : 'en-US', {
-                year: 'numeric', month: 'long', day: 'numeric',
+                year: 'numeric', month: 'long', day: 'numeric', weekday: 'short',
             });
         }
     }
@@ -32,6 +32,7 @@ interface SessionListProps {
     onSessionRemove: (index: number) => void;
     onSavedSessionSelect: (id: string) => void;
     onSavedSessionDelete: (id: string) => void;
+    onSessionMetadataUpdate?: (id: string, metadata: Partial<SessionData['metadata']>) => void;
     onPairSelect?: (anaId: string, refId: string) => void;
     onBack?: () => void;
 }
@@ -45,6 +46,7 @@ const SessionList: React.FC<SessionListProps> = ({
     onSessionRemove,
     onSavedSessionSelect,
     onSavedSessionDelete,
+    onSessionMetadataUpdate,
     onPairSelect,
     onBack,
 }) => {
@@ -53,6 +55,38 @@ const SessionList: React.FC<SessionListProps> = ({
     const [orphanReports, setOrphanReports] = useState<StoredReport[]>([]);
     const [viewingReport, setViewingReport] = useState<StoredReport | null>(null);
     const [selectedRefId, setSelectedRefId] = useState<string | null>(null);
+
+    // Edit modal state
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editRider, setEditRider] = useState('');
+    const [editBike, setEditBike] = useState('');
+    const [editCondition, setEditCondition] = useState<'dry' | 'wet'>('dry');
+    const [editTuning, setEditTuning] = useState<'stock' | 'tuned'>('stock');
+    const [editSessionType, setEditSessionType] = useState<'practice' | 'race' | 'warmup' | 'trackday'>('practice');
+    const [editEventName, setEditEventName] = useState('');
+
+    const openEditModal = (id: string, meta: SessionData['metadata']) => {
+        setEditingId(id);
+        setEditRider(meta.riderName || '');
+        setEditBike(meta.bikeModel || meta.vehicle || '');
+        setEditCondition(meta.condition || 'dry');
+        setEditTuning(meta.tuning || 'stock');
+        setEditSessionType(meta.sessionType || 'practice');
+        setEditEventName(meta.eventName || '');
+    };
+
+    const handleSaveEdit = () => {
+        if (!editingId || !onSessionMetadataUpdate) return;
+        onSessionMetadataUpdate(editingId, {
+            riderName: editRider,
+            bikeModel: editBike,
+            condition: editCondition,
+            tuning: editTuning,
+            sessionType: editSessionType,
+            eventName: editEventName,
+        });
+        setEditingId(null);
+    };
 
     // Look up session name by id
     const getSessionLabel = (id: string): string => {
@@ -290,17 +324,31 @@ const SessionList: React.FC<SessionListProps> = ({
                                                                     </span>
                                                                 )}
                                                             </div>
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    if (isMemory) onSessionRemove(item.index);
-                                                                    else onSavedSessionDelete(item.summary.id);
-                                                                }}
-                                                                className="text-zinc-600 hover:text-red-500 transition p-1.5 hover:bg-zinc-800 rounded-full"
-                                                                title={isMemory ? t.sessions.removeSession : t.sessions.deleteSavedSession}
-                                                            >
-                                                                <Trash2 size={14} />
-                                                            </button>
+                                                            <div className="flex items-center gap-0.5">
+                                                                {id && onSessionMetadataUpdate && (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            openEditModal(id, meta);
+                                                                        }}
+                                                                        className="text-zinc-600 hover:text-blue-400 transition p-1.5 hover:bg-zinc-800 rounded-full"
+                                                                        title={t.sessions.editSession}
+                                                                    >
+                                                                        <Pencil size={13} />
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        if (isMemory) onSessionRemove(item.index);
+                                                                        else onSavedSessionDelete(item.summary.id);
+                                                                    }}
+                                                                    className="text-zinc-600 hover:text-red-500 transition p-1.5 hover:bg-zinc-800 rounded-full"
+                                                                    title={isMemory ? t.sessions.removeSession : t.sessions.deleteSavedSession}
+                                                                >
+                                                                    <Trash2 size={14} />
+                                                                </button>
+                                                            </div>
                                                         </div>
                                                         <div className="space-y-1 text-sm text-zinc-400">
                                                             {meta.sessionType && (
@@ -374,6 +422,113 @@ const SessionList: React.FC<SessionListProps> = ({
                             </div>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* Edit Session Modal */}
+            {editingId && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+                    onClick={(e) => { if (e.target === e.currentTarget) setEditingId(null); }}
+                >
+                    <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-[95vw] max-w-lg shadow-2xl">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
+                            <span className="font-bold text-white">{t.sessions.editSession}</span>
+                            <button onClick={() => setEditingId(null)} className="text-zinc-400 hover:text-white transition p-1">
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="px-6 py-5 space-y-4">
+                            {/* Rider */}
+                            <div className="flex flex-col gap-1">
+                                <label className="text-xs text-zinc-500">{t.upload.riderName}</label>
+                                <input
+                                    type="text"
+                                    value={editRider}
+                                    onChange={e => setEditRider(e.target.value)}
+                                    placeholder={t.upload.riderNamePlaceholder}
+                                    className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:border-blue-500 focus:outline-none"
+                                />
+                            </div>
+                            {/* Bike */}
+                            <div className="flex flex-col gap-1">
+                                <label className="text-xs text-zinc-500">{t.upload.bikeModel}</label>
+                                <input
+                                    type="text"
+                                    value={editBike}
+                                    onChange={e => setEditBike(e.target.value)}
+                                    placeholder={t.upload.bikeModelPlaceholder}
+                                    className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:border-blue-500 focus:outline-none"
+                                />
+                            </div>
+                            {/* Condition */}
+                            <div className="flex flex-col gap-1">
+                                <label className="text-xs text-zinc-500">{t.upload.condition}</label>
+                                <div className="flex rounded-lg overflow-hidden border border-zinc-700 w-fit">
+                                    <button type="button" onClick={() => setEditCondition('dry')}
+                                        className={`px-4 py-2 text-xs font-bold transition ${editCondition === 'dry' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'}`}>
+                                        {t.upload.conditionDry}
+                                    </button>
+                                    <button type="button" onClick={() => setEditCondition('wet')}
+                                        className={`px-4 py-2 text-xs font-bold transition ${editCondition === 'wet' ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'}`}>
+                                        {t.upload.conditionWet}
+                                    </button>
+                                </div>
+                            </div>
+                            {/* Tuning */}
+                            <div className="flex flex-col gap-1">
+                                <label className="text-xs text-zinc-500">{t.upload.tuning}</label>
+                                <div className="flex rounded-lg overflow-hidden border border-zinc-700 w-fit">
+                                    <button type="button" onClick={() => setEditTuning('stock')}
+                                        className={`px-4 py-2 text-xs font-bold transition ${editTuning === 'stock' ? 'bg-zinc-600 text-white' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'}`}>
+                                        {t.upload.tuningStock}
+                                    </button>
+                                    <button type="button" onClick={() => setEditTuning('tuned')}
+                                        className={`px-4 py-2 text-xs font-bold transition ${editTuning === 'tuned' ? 'bg-orange-600 text-white' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'}`}>
+                                        {t.upload.tuningTuned}
+                                    </button>
+                                </div>
+                            </div>
+                            {/* Session Type */}
+                            <div className="flex flex-col gap-1">
+                                <label className="text-xs text-zinc-500">{t.upload.sessionType}</label>
+                                <div className="flex rounded-lg overflow-hidden border border-zinc-700 w-fit">
+                                    {(['practice', 'race', 'warmup', 'trackday'] as const).map(type => {
+                                        const labels = { practice: t.upload.typePractice, race: t.upload.typeRace, warmup: t.upload.typeWarmup, trackday: t.upload.typeTrackday };
+                                        return (
+                                            <button key={type} type="button" onClick={() => setEditSessionType(type)}
+                                                className={`px-3 py-2 text-xs font-medium transition ${editSessionType === type ? 'bg-blue-600 text-white' : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'}`}>
+                                                {labels[type]}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            {/* Event Name */}
+                            {editSessionType === 'race' && (
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-xs text-zinc-500">{t.upload.eventName}</label>
+                                    <input
+                                        type="text"
+                                        value={editEventName}
+                                        onChange={e => setEditEventName(e.target.value)}
+                                        placeholder={t.upload.eventNamePlaceholder}
+                                        className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:border-blue-500 focus:outline-none"
+                                    />
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex justify-end gap-3 px-6 py-4 border-t border-zinc-800">
+                            <button onClick={() => setEditingId(null)}
+                                className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 transition">
+                                {t.common.cancel}
+                            </button>
+                            <button onClick={handleSaveEdit}
+                                className="px-6 py-2 rounded-lg text-sm font-bold bg-blue-600 hover:bg-blue-500 transition text-white">
+                                {t.sessions.save}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
 
