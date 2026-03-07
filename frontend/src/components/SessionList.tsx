@@ -11,21 +11,27 @@ import { renderMarkdown, markdownStyles } from '../utils/markdownRenderer';
 /** Format date string to compact Korean form: "8/16 (토)" */
 function formatDate(dateStr: string): string {
     if (!dateStr) return '';
+    // Try parsing with Date constructor (handles "August 16, 2025", "2025-08-16", etc.)
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime()) && d.getFullYear() > 2000) {
+        const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
+        return `${d.getMonth() + 1}/${d.getDate()} (${weekdays[d.getDay()]})`;
+    }
+    // Fallback: try splitting DD/MM/YYYY
     const parts = dateStr.split(/[-/.]/);
     if (parts.length >= 3) {
-        // Handle both YYYY-MM-DD and DD/MM/YYYY formats
         let y: number, m: number, day: number;
         if (Number(parts[0]) > 31) {
-            // YYYY-MM-DD
             y = Number(parts[0]); m = Number(parts[1]); day = Number(parts[2]);
+        } else if (Number(parts[1]) > 12) {
+            m = Number(parts[0]); day = Number(parts[1]); y = Number(parts[2]);
         } else {
-            // DD/MM/YYYY
             day = Number(parts[0]); m = Number(parts[1]); y = Number(parts[2]);
         }
-        const d = new Date(y, m - 1, day);
-        if (!isNaN(d.getTime())) {
+        const d2 = new Date(y, m - 1, day);
+        if (!isNaN(d2.getTime())) {
             const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
-            return `${m}/${day} (${weekdays[d.getDay()]})`;
+            return `${m}/${day} (${weekdays[d2.getDay()]})`;
         }
     }
     return dateStr;
@@ -169,7 +175,8 @@ const SessionList: React.FC<SessionListProps> = ({
 
         for (const item of allItems) {
             const meta = item.type === 'memory' ? item.session.metadata : item.summary.metadata;
-            const venue = meta.venue || 'Unknown';
+            const rawVenue = meta.venue || 'Unknown';
+            const venue = /^(GPS|Speed|RPM|TPS|Unknown)/i.test(rawVenue) ? 'Unknown' : rawVenue;
             const rider = meta.riderName || '';
             const bike = meta.bikeModel || meta.vehicle || '';
             const riderBikeKey = [rider, bike].filter(Boolean).join(' · ') || 'Unknown';
