@@ -8,14 +8,14 @@ import { listAllReports, deleteReport } from '../utils/sessionStorage';
 import type { StoredReport } from '../utils/sessionStorage';
 import { renderMarkdown, markdownStyles } from '../utils/markdownRenderer';
 
-/** Format date string like "2025-03-06" to localized form with weekday */
-function formatDate(dateStr: string, locale: string): string {
+/** Format date string like "2025-03-06" to Korean form with weekday */
+function formatDate(dateStr: string): string {
     if (!dateStr) return '';
     const parts = dateStr.split(/[-/.]/);
     if (parts.length >= 3) {
         const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
         if (!isNaN(d.getTime())) {
-            return d.toLocaleDateString(locale === 'ko' ? 'ko-KR' : 'en-US', {
+            return d.toLocaleDateString('ko-KR', {
                 year: 'numeric', month: 'long', day: 'numeric', weekday: 'short',
             });
         }
@@ -50,7 +50,7 @@ const SessionList: React.FC<SessionListProps> = ({
     onPairSelect,
     onBack,
 }) => {
-    const { t, locale } = useTranslation();
+    const { t } = useTranslation();
     const [selectedAnaId, setSelectedAnaId] = useState<string | null>(null);
     const [orphanReports, setOrphanReports] = useState<StoredReport[]>([]);
     const [viewingReport, setViewingReport] = useState<StoredReport | null>(null);
@@ -302,7 +302,7 @@ const SessionList: React.FC<SessionListProps> = ({
                                                         <div className="flex justify-between items-start mb-1">
                                                             <div className="flex items-center gap-2 flex-wrap">
                                                                 <span className="text-sm font-medium text-white group-hover:text-blue-400 transition">
-                                                                    {formatDate(meta.date, locale)} {meta.time}
+                                                                    {formatDate(meta.date)} {meta.time}
                                                                 </span>
                                                                 {!isMemory && <HardDrive size={12} className="text-zinc-600" />}
                                                                 {meta.condition && (
@@ -411,11 +411,11 @@ const SessionList: React.FC<SessionListProps> = ({
                                             </span>
                                         </div>
                                         <p className="text-xs text-zinc-500">
-                                            {report.date ? formatDate(report.date, locale) + ' • ' : ''}
+                                            {report.date ? formatDate(report.date) + ' • ' : ''}
                                             L{report.anaLapIndex} vs L{report.refLapIndex} • {report.lang.toUpperCase()}
                                         </p>
                                         <p className="text-[10px] text-zinc-600 mt-1">
-                                            {new Date(report.savedAt).toLocaleDateString(locale === 'ko' ? 'ko-KR' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                            {new Date(report.savedAt).toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                         </p>
                                     </div>
                                 ))}
@@ -544,7 +544,7 @@ const SessionList: React.FC<SessionListProps> = ({
                                 <Sparkles size={16} className="text-violet-400" />
                                 <span className="font-bold text-white">{viewingReport.venue || 'AI Report'}</span>
                                 <span className="text-xs text-zinc-500">
-                                    {viewingReport.date ? formatDate(viewingReport.date, locale) : ''} • L{viewingReport.anaLapIndex} vs L{viewingReport.refLapIndex}
+                                    {viewingReport.date ? formatDate(viewingReport.date) : ''} • L{viewingReport.anaLapIndex} vs L{viewingReport.refLapIndex}
                                 </span>
                             </div>
                             <div className="flex items-center gap-2">
