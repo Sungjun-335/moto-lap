@@ -12,8 +12,19 @@ export default {
             if (!url.pathname.includes(".")) {
                 // Fetch index.html
                 const indexRequest = new Request(new URL("/", request.url), request);
-                return await env.ASSETS.fetch(indexRequest);
+                response = await env.ASSETS.fetch(indexRequest);
             }
+        }
+
+        // Prevent caching of HTML (so new deploys are picked up immediately)
+        const contentType = response.headers.get("content-type") || "";
+        if (contentType.includes("text/html")) {
+            const newHeaders = new Headers(response.headers);
+            newHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate");
+            return new Response(response.body, {
+                status: response.status,
+                headers: newHeaders,
+            });
         }
 
         return response;
