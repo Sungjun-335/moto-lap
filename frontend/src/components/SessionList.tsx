@@ -325,11 +325,11 @@ const SessionList: React.FC<SessionListProps> = ({
                                                                 )}
                                                             </div>
                                                             <div className="flex items-center gap-0.5">
-                                                                {id && onSessionMetadataUpdate && (
+                                                                {onSessionMetadataUpdate && (
                                                                     <button
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
-                                                                            openEditModal(id, meta);
+                                                                            if (id) openEditModal(id, meta);
                                                                         }}
                                                                         className="text-zinc-600 hover:text-blue-400 transition p-1.5 hover:bg-zinc-800 rounded-full"
                                                                         title={t.sessions.editSession}
