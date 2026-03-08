@@ -70,6 +70,10 @@ const SessionList: React.FC<SessionListProps> = ({
     const [viewingReport, setViewingReport] = useState<StoredReport | null>(null);
     const [selectedRefId, setSelectedRefId] = useState<string | null>(null);
 
+    // Delete confirmation state
+    const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+    const [deleteConfirmIndex, setDeleteConfirmIndex] = useState<number | null>(null);
+
     // Edit modal state
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editRider, setEditRider] = useState('');
@@ -192,6 +196,35 @@ const SessionList: React.FC<SessionListProps> = ({
 
     return (
         <div className="flex flex-col h-screen max-w-6xl mx-auto p-6 text-zinc-100">
+            {/* Delete confirmation modal */}
+            {(deleteConfirmId || deleteConfirmIndex !== null) && (
+                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => { setDeleteConfirmId(null); setDeleteConfirmIndex(null); }}>
+                    <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 max-w-sm w-full shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-lg font-bold text-white mb-3">{t.sessions.deleteSavedSession}</h3>
+                        <p className="text-sm text-zinc-400 mb-6">{t.sessions.deleteConfirmMessage}</p>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => { setDeleteConfirmId(null); setDeleteConfirmIndex(null); }}
+                                className="flex-1 px-4 py-2.5 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg transition-colors"
+                            >
+                                {t.upload.duplicateCancel}
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (deleteConfirmIndex !== null) onSessionRemove(deleteConfirmIndex);
+                                    if (deleteConfirmId) onSavedSessionDelete(deleteConfirmId);
+                                    setDeleteConfirmId(null);
+                                    setDeleteConfirmIndex(null);
+                                }}
+                                className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors font-medium"
+                            >
+                                {t.sessions.confirmDelete}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <header className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-3">
                     {onBack && (
@@ -355,8 +388,8 @@ const SessionList: React.FC<SessionListProps> = ({
                                                                 <button
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
-                                                                        if (isMemory) onSessionRemove(item.index);
-                                                                        else onSavedSessionDelete(item.summary.id);
+                                                                        if (isMemory) setDeleteConfirmIndex(item.index);
+                                                                        else setDeleteConfirmId(item.summary.id);
                                                                     }}
                                                                     className="text-zinc-600 hover:text-red-500 transition p-1.5 hover:bg-zinc-800 rounded-full"
                                                                     title={isMemory ? t.sessions.removeSession : t.sessions.deleteSavedSession}

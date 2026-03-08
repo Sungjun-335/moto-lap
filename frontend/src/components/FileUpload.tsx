@@ -206,6 +206,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, on
             if (track) {
                 console.log(`[FileUpload] Track recognized: ${track.name} (${track.shortName})`);
                 data.metadata.trackId = track.id;
+                // Use recognized track name as venue (replaces garbage from XRK metadata)
+                if (!data.metadata.venue || data.metadata.venue === 'Unknown' || /[\x00-\x1f]/.test(data.metadata.venue)) {
+                    data.metadata.venue = track.name;
+                }
                 setMatchedTrack(track);
             } else {
                 setMatchedTrack(null);

@@ -124,6 +124,8 @@ export interface Translations {
         uploadToStart: string;
         removeSession: string;
         deleteSavedSession: string;
+        deleteConfirmMessage: string;
+        confirmDelete: string;
         restoring: string;
         bestLap: string;
         selectRefPrompt: string;

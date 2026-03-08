@@ -261,30 +261,44 @@ function parseMetadata(buf: Uint8Array): XrkMetadata {
     const vtyMatch = tail.match(/>([^<]+)<VTY/);
     if (vtyMatch) meta.venueType = vtyMatch[1].replace(/\0/g, '').trim();
 
-    // Track and date are earlier in the file - search broader
-    const fullText = decoder.decode(buf.slice(0, Math.min(buf.length, 20000)));
-
-    const trkMatch = fullText.match(/>([^<\0]+)\0*<TRK/);
-    // Track name is usually near the TRK tag preceded by >
-    const trkMatch2 = fullText.match(/>([A-Za-z][^<\0]{1,30})\0*.*?<TRK/);
-    // Filter out channel names that could be false positives
-    const invalidTrackNames = /^(GPS|Speed|RPM|TPS|Brake|Throttle|Gear|DistL|Time)/i;
-    const rawTrack = trkMatch?.[1]?.trim() || trkMatch2?.[1]?.trim() || '';
-    if (rawTrack && !invalidTrackNames.test(rawTrack)) {
-        meta.track = rawTrack;
+    // Track, date, time — search both start and end of file
+    const searchAreas = [
+        decoder.decode(buf.slice(0, Math.min(buf.length, 20000))),
+        tail, // already decoded above (last 1000 bytes)
+    ];
+    // Also search a broader tail area for TRK
+    if (buf.length > 5000) {
+        searchAreas.push(decoder.decode(buf.slice(Math.max(0, buf.length - 5000))));
     }
 
-    const tmdMatch = fullText.match(/>(\d{2}\/\d{2}\/\d{4})/);
-    if (tmdMatch) meta.date = tmdMatch[1];
+    const invalidTrackNames = /^(GPS|Speed|RPM|TPS|Brake|Throttle|Gear|DistL|Time|idn)/i;
 
-    const tmtMatch = fullText.match(/>(\d{2}:\d{2}:\d{2})/);
-    if (tmtMatch) meta.time = tmtMatch[1];
+    for (const text of searchAreas) {
+        if (meta.track === 'Unknown') {
+            // Match >TrackName<TRK — only printable ASCII (0x20-0x7E)
+            const trkMatch = text.match(/>([^\x00-\x1f<]{2,40}?)\s*<TRK/);
+            if (trkMatch) {
+                const cleaned = trkMatch[1].replace(/[\x00-\x1f]/g, '').trim();
+                if (cleaned && !invalidTrackNames.test(cleaned)) {
+                    meta.track = cleaned;
+                }
+            }
+        }
+        if (meta.date === 'Unknown') {
+            const tmdMatch = text.match(/>(\d{2}\/\d{2}\/\d{4})/);
+            if (tmdMatch) meta.date = tmdMatch[1];
+        }
+        if (meta.time === 'Unknown') {
+            const tmtMatch = text.match(/>(\d{2}:\d{2}:\d{2})/);
+            if (tmtMatch) meta.time = tmtMatch[1];
+        }
+    }
 
     return meta;
 }
 
 // Compute GPS-derived channels (acceleration, gyro) from GPS points
-function computeDerivedChannels(points: GpsPoint[]): {
+function computeDerivedChannels(points: GpsPoint[], sampleInterval: number): {
     latG: number[];   // lateral acceleration (G)
     lonG: number[];   // longitudinal acceleration (G)
     gyroZ: number[];  // yaw rate (deg/s)
@@ -299,7 +313,7 @@ function computeDerivedChannels(points: GpsPoint[]): {
     // Compute heading array from velocity
     const headings = points.map(p => Math.atan2(p.vE, p.vN)); // radians
 
-    const dt = 0.1; // 10Hz GPS = 0.1s between samples
+    const dt = sampleInterval;
 
     for (let i = 1; i < n - 1; i++) {
         const speedMs = points[i].speed / 3.6;
@@ -365,25 +379,59 @@ export const parseXrk = (file: File): Promise<SessionData> => {
                 const meta = parseMetadata(buf);
                 console.log(`[XRK Parser] Metadata:`, meta);
 
-                // 5. Compute derived channels
-                const { latG, lonG, gyroZ } = computeDerivedChannels(gpsPoints);
-
-                // 6. Build LapData array
-                // Timestamp unit: 40 ticks = 0.1s (10Hz GPS)
+                // 5. Calculate timing parameters
                 const firstTs = gpsPoints[0].timestamp;
-                const ticksPerSec = 400; // 40 ticks per 0.1s
+                const lastTs = gpsPoints[gpsPoints.length - 1].timestamp;
+                const avgTicksPerSample = (lastTs - firstTs) / (gpsPoints.length - 1);
 
-                // Accumulate distance from DistL channel (resets per lap)
+                // Auto-detect ticksPerSec from hLAP data:
+                // For complete laps: tickInterval (ticks) ≈ durationMs (ms)
+                // So: ticksPerSec = tickInterval / (durationMs / 1000)
+                // Use median of middle laps (skip first/last which may be out-lap/in-lap)
+                let ticksPerSec = 1000; // default: millisecond resolution
+                const sortedLaps = [...lapEntries].sort((a, b) => a.startTimestamp - b.startTimestamp);
+                if (sortedLaps.length >= 3) {
+                    const estimates: number[] = [];
+                    // Skip first and last lap (out-lap/in-lap have mismatched durations)
+                    for (let li = 1; li < sortedLaps.length - 1; li++) {
+                        const tickInterval = sortedLaps[li + 1].startTimestamp - sortedLaps[li].startTimestamp;
+                        const durMs = sortedLaps[li].durationMs;
+                        if (durMs > 10000 && tickInterval > 0) { // duration > 10 seconds
+                            estimates.push(tickInterval / (durMs / 1000));
+                        }
+                    }
+                    if (estimates.length > 0) {
+                        estimates.sort((a, b) => a - b);
+                        const median = estimates[Math.floor(estimates.length / 2)];
+                        // Round to nearest common tick rate (100, 200, 400, 500, 1000, 2000)
+                        const commonRates = [100, 200, 400, 500, 1000, 2000];
+                        ticksPerSec = commonRates.reduce((best, rate) =>
+                            Math.abs(rate - median) < Math.abs(best - median) ? rate : best
+                        );
+                        console.log(`[XRK Parser] ticksPerSec estimates: median=${median.toFixed(1)}, rounded to ${ticksPerSec}`);
+                    }
+                }
+
+                const sampleInterval = avgTicksPerSample / ticksPerSec;
+                const gpsHz = Math.round(ticksPerSec / avgTicksPerSample);
+                console.log(`[XRK Parser] ticksPerSec=${ticksPerSec} (auto-detected), GPS: ${gpsHz}Hz (${avgTicksPerSample.toFixed(1)} ticks/sample, dt=${sampleInterval.toFixed(4)}s), total ${gpsPoints.length} pts, session ${((lastTs - firstTs) / ticksPerSec).toFixed(1)}s`);
+
+                // 6. Compute derived channels
+                const { latG, lonG, gyroZ } = computeDerivedChannels(gpsPoints, sampleInterval);
+
+                // 7. Build LapData array + detect lap boundaries from DistL resets
                 let totalDistance = 0;
                 let lastDistL = gpsPoints[0].distL;
+                const distLResetTimes: number[] = []; // beacon markers from DistL channel
 
                 const dataPoints: LapData[] = gpsPoints.map((gp, i) => {
                     const time = (gp.timestamp - firstTs) / ticksPerSec;
 
                     // Distance accumulation: DistL resets each lap
                     if (gp.distL < lastDistL - 100) {
-                        // Lap rollover detected
+                        // Lap rollover detected → this is a start/finish crossing
                         totalDistance += lastDistL;
+                        distLResetTimes.push(time);
                     }
                     lastDistL = gp.distL;
                     const sessionDistance = totalDistance + gp.distL;
@@ -406,24 +454,43 @@ export const parseXrk = (file: File): Promise<SessionData> => {
                     };
                 });
 
-                // 7. Compute beacon markers from LAP entries
-                const beaconMarkers = lapEntries
-                    .filter(l => l.lapNumber > 0)
-                    .map(l => (l.startTimestamp - firstTs) / ticksPerSec)
-                    .sort((a, b) => a - b);
+                // 8. Compute beacon markers
+                // Primary: use DistL resets (same GPS timebase, guaranteed correct)
+                // Fallback: use hLAP startTimestamp if no DistL resets found
+                let beaconMarkers: number[];
+
+                if (distLResetTimes.length > 0) {
+                    beaconMarkers = distLResetTimes;
+                    console.log(`[XRK Parser] Using DistL reset beacons (${beaconMarkers.length}):`, beaconMarkers.map(t => t.toFixed(2)));
+                    // Log hLAP data for comparison
+                    for (const l of lapEntries) {
+                        const startSec = (l.startTimestamp - firstTs) / ticksPerSec;
+                        console.log(`[XRK Parser] hLAP ${l.lapNumber}: startTs=${startSec.toFixed(2)}s, dur=${l.durationMs} (raw)`);
+                    }
+                } else {
+                    // Fallback to hLAP timestamps
+                    const completeLaps = lapEntries
+                        .filter(l => l.lapNumber > 0)
+                        .sort((a, b) => a.startTimestamp - b.startTimestamp);
+                    beaconMarkers = completeLaps
+                        .map(l => (l.startTimestamp - firstTs) / ticksPerSec);
+                    console.log(`[XRK Parser] Using hLAP beacons (${beaconMarkers.length}):`, beaconMarkers.map(t => t.toFixed(2)));
+                }
 
                 console.log(`[XRK Parser] Beacon markers (seconds):`, beaconMarkers);
 
-                // 8. Segment into laps and filter outliers
+                // 9. Segment into laps and filter outliers
                 const rawLaps = segmentLaps(dataPoints, beaconMarkers);
                 const laps = filterOutlierLaps(rawLaps);
 
                 console.log(`[XRK Parser] Segmented ${laps.length} laps`);
 
                 // Determine venue: prefer track name from metadata
-                const invalidVenue = /^(GPS|Speed|RPM|TPS|Unknown)$/i;
+                // Filter out garbage binary data and channel names
+                const invalidVenue = /^(GPS|Speed|RPM|TPS|Unknown|idn)$/i;
+                const hasControlChars = /[\x00-\x1f]/;
                 const rawVenue = meta.track !== 'Unknown' ? meta.track : (meta.competition || 'Unknown');
-                const venue = invalidVenue.test(rawVenue) ? 'Unknown' : rawVenue;
+                const venue = (invalidVenue.test(rawVenue) || hasControlChars.test(rawVenue)) ? 'Unknown' : rawVenue;
 
                 resolve({
                     metadata: {
