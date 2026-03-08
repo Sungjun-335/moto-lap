@@ -288,6 +288,8 @@ export const en: Translations = {
         backToReport: 'Back',
         noPastReports: 'No past reports found.',
         loadedPastReport: 'Past Report',
+        loginRequired: 'Please sign in to generate reports.',
+        limitReached: 'Free report limit (3) reached.',
     },
     auth: {
         signIn: 'Sign In',

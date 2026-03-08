@@ -11,7 +11,7 @@ import { CHART_REGISTRY, getDefaultVisibleCharts } from './chartRegistry';
 import LapMetricsSummary from './LapMetricsSummary';
 // RiderStatsCard removed from UI — rider level analysis is done via AI report only
 import ReportModal from './ReportModal';
-import { collectReportData, buildReportPrompt, generateReport, fetchVenueStats, computeSessionMetrics } from '../../utils/reportApi';
+import { collectReportData, buildReportPrompt, generateReport, fetchVenueStats, computeSessionMetrics, ReportLimitError } from '../../utils/reportApi';
 import type { VenueStats } from '../../utils/reportApi';
 import ReferenceSelector from './ReferenceSelector';
 import { saveReport, loadReport, listAllReports } from '../../utils/sessionStorage';
@@ -379,7 +379,12 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onH
             }
         } catch (err: unknown) {
             if (!ac.signal.aborted) {
-                const message = err instanceof Error ? err.message : 'Unknown error';
+                let message = err instanceof Error ? err.message : 'Unknown error';
+                if (err instanceof ReportLimitError) {
+                    message = err.message;
+                } else if (message === 'LOGIN_REQUIRED') {
+                    message = t.report?.loginRequired ?? '리포트 생성을 위해 로그인이 필요합니다.';
+                }
                 setReportState({ open: true, status: 'error', report: '', error: message });
             }
         }

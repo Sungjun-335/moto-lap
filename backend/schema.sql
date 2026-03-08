@@ -13,6 +13,8 @@ CREATE TABLE Users (
     provider TEXT NOT NULL DEFAULT 'google',
     kakao_id TEXT UNIQUE,
     naver_id TEXT UNIQUE,
+    report_count INTEGER NOT NULL DEFAULT 0,
+    plan TEXT NOT NULL DEFAULT 'free',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

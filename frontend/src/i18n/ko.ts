@@ -288,6 +288,8 @@ export const ko: Translations = {
         backToReport: '\ub3cc\uc544\uac00\uae30',
         noPastReports: '\uc800\uc7a5\ub41c \ub9ac\ud3ec\ud2b8\uac00 \uc5c6\uc2b5\ub2c8\ub2e4.',
         loadedPastReport: '\uc9c0\ub09c \ub9ac\ud3ec\ud2b8',
+        loginRequired: '리포트 생성을 위해 로그인이 필요합니다.',
+        limitReached: '무료 리포트 한도(3회)를 초과했습니다.',
     },
     auth: {
         signIn: '로그인',

@@ -1039,18 +1039,62 @@ async def on_fetch(request, env):
             traceback.print_exc()
             return Response.new(json.dumps({"error": str(e)}), headers=headers, status=500)
 
+    if request.method == "GET" and url.endswith("/api/reports/quota"):
+        user = await _get_user_from_request(request, env)
+        if not user:
+            return Response.new(json.dumps({"error": "Unauthorized"}), headers=headers, status=401)
+        email = user.get("email", "")
+        is_admin = email in ADMIN_EMAILS
+        if is_admin:
+            return Response.new(json.dumps({"used": 0, "limit": -1, "plan": "unlimited"}), headers=headers)
+        user_id = int(user["sub"])
+        row = await env.DB.prepare("SELECT report_count, plan FROM Users WHERE id = ?").bind(user_id).first()
+        count = int(row["report_count"]) if row and row["report_count"] is not None else 0
+        plan = row["plan"] if row and row["plan"] else "free"
+        limit = -1 if plan == "unlimited" else 3
+        return Response.new(json.dumps({"used": count, "limit": limit, "plan": plan}), headers=headers)
+
     if request.method == "POST" and url.endswith("/api/reports/generate"):
         try:
+            # Require authentication
+            user = await _get_user_from_request(request, env)
+            if not user:
+                return Response.new(json.dumps({"error": "Unauthorized"}), headers=headers, status=401)
+
+            email = user.get("email", "")
+            is_admin = email in ADMIN_EMAILS
+            user_id = int(user["sub"])
+
+            # Check report quota for non-admin users
+            if not is_admin:
+                row = await env.DB.prepare("SELECT report_count, plan FROM Users WHERE id = ?").bind(user_id).first()
+                count = int(row["report_count"]) if row and row["report_count"] is not None else 0
+                plan = row["plan"] if row and row["plan"] else "free"
+                if plan != "unlimited" and count >= 3:
+                    return Response.new(json.dumps({
+                        "error": "REPORT_LIMIT_REACHED",
+                        "message": "무료 리포트 한도(3회)를 초과했습니다.",
+                        "used": count,
+                        "limit": 3,
+                    }), headers=headers, status=429)
+
             content_bytes = await request.bytes()
             body = json.loads(bytes(content_bytes).decode("utf-8"))
             result = await _generate_report(body, env)
+
+            # Increment report count for non-admin users
+            if not is_admin:
+                await env.DB.prepare(
+                    "UPDATE Users SET report_count = report_count + 1 WHERE id = ?"
+                ).bind(user_id).run()
+
             return Response.new(json.dumps(result), headers=headers)
         except ValueError as e:
             return Response.new(json.dumps({"error": str(e)}), headers=headers, status=400)
         except Exception as e:
             import traceback
             traceback.print_exc()
-            return Response.new(json.dumps({"error": str(e)}), headers=headers, status=500)
+            return Response.new(json.dumps({"error": "Report generation failed"}), headers=headers, status=500)
 
     if request.method == "POST" and url.endswith("/api/sessions"):
         try:

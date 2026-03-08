@@ -1,6 +1,28 @@
 import type { SessionData, Corner, LapMetrics, BrakingProfile, LeanProfile, ThrottleProfile, GDip, CoastingPenalty, BrakeJerk } from '../types';
 import type { AnalysisPoint } from './analysis';
 
+// ─── Report Limit Error ───
+
+export class ReportLimitError extends Error {
+  used: number;
+  limit: number;
+  constructor(message: string, used: number, limit: number) {
+    super(message);
+    this.name = 'ReportLimitError';
+    this.used = used;
+    this.limit = limit;
+  }
+}
+
+// ─── Report Quota API ───
+
+export async function fetchReportQuota(): Promise<{ used: number; limit: number; plan: string }> {
+  const { apiFetch } = await import('./apiClient');
+  const resp = await apiFetch('/api/reports/quota');
+  if (!resp.ok) return { used: 0, limit: 3, plan: 'free' };
+  return resp.json();
+}
+
 // ─── Report Data Types ───
 
 interface ReportCorner {
@@ -825,8 +847,14 @@ export async function generateReport(
   });
 
   if (!resp.ok) {
-    const err = await resp.text();
-    throw new Error(`Report API error ${resp.status}: ${err}`);
+    const errBody = await resp.json().catch(() => null);
+    if (resp.status === 429 && errBody?.error === 'REPORT_LIMIT_REACHED') {
+      throw new ReportLimitError(errBody.message, errBody.used, errBody.limit);
+    }
+    if (resp.status === 401) {
+      throw new Error('LOGIN_REQUIRED');
+    }
+    throw new Error(errBody?.message || `Report API error ${resp.status}`);
   }
 
   const result = await resp.json();

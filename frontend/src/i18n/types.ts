@@ -288,6 +288,8 @@ export interface Translations {
         backToReport: string;
         noPastReports: string;
         loadedPastReport: string;
+        loginRequired: string;
+        limitReached: string;
     };
     auth: {
         signIn: string;
