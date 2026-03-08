@@ -3,8 +3,6 @@ import { X, Copy, Check, Loader2, AlertCircle, RefreshCw, Sparkles, History, Arr
 import { renderMarkdown, markdownStyles } from '../../utils/markdownRenderer';
 import { useTranslation } from '../../i18n/context';
 import type { StoredReport } from '../../utils/sessionStorage';
-import type { SessionData } from '../../types';
-import type { AnalysisPoint } from '../../utils/analysis';
 
 interface ReportModalProps {
   status: 'confirm' | 'loading' | 'error' | 'success';
@@ -16,17 +14,11 @@ interface ReportModalProps {
   reportLang: 'ko' | 'en';
   onLangChange: (lang: 'ko' | 'en') => void;
   savedReports?: StoredReport[];
-  chartData?: {
-    data: SessionData;
-    viewData: AnalysisPoint[];
-    refLapIndex: number;
-    anaLapIndex: number;
-  };
 }
 
 const ReportModal: React.FC<ReportModalProps> = ({
   status, report, error, onClose, onGenerate, onRegenerate,
-  reportLang, onLangChange, savedReports, chartData
+  reportLang, onLangChange, savedReports,
 }) => {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);

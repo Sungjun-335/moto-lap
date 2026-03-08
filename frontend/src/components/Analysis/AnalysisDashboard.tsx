@@ -931,12 +931,6 @@ const AnalysisDashboard: React.FC<AnalysisDashboardProps> = ({ data, onBack, onH
                     reportLang={reportLang}
                     onLangChange={handleLangChange}
                     savedReports={allSavedReports}
-                    chartData={{
-                        data,
-                        viewData,
-                        refLapIndex,
-                        anaLapIndex,
-                    }}
                 />
             )}
         </div>
