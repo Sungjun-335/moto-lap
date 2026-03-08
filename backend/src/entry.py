@@ -1096,10 +1096,10 @@ async def on_fetch(request, env):
     if request.method == "POST" and "/api/auth/register" in url:
         try:
             return await _handle_register(request, env, headers)
-        except Exception:
+        except Exception as e:
             import traceback
             traceback.print_exc()
-            return Response.new(json.dumps({"error": "Registration failed"}), headers=headers, status=500)
+            return Response.new(json.dumps({"error": f"Registration failed: {str(e)}"}), headers=headers, status=500)
 
     if request.method == "POST" and "/api/auth/login" in url:
         try:
