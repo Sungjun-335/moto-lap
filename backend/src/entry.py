@@ -717,13 +717,23 @@ async def _handle_register(request, env, headers):
 
     password_hash = _hash_password(password)
 
-    # Insert new user
-    res = await env.DB.prepare(
-        "INSERT INTO Users (google_id, email, name, picture_url, provider, username, password_hash,"
-        " real_name, nickname, team_name, bike_name, racing_experience, primary_track, registration_complete)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)"
-    ).bind(f"local:{username}", "", real_name, "", "local", username, password_hash,
-           real_name, nickname, team_name, bike_name, racing_experience, primary_track).run()
+    # Insert new user — try full schema first, fallback for missing columns
+    try:
+        res = await env.DB.prepare(
+            "INSERT INTO Users (google_id, email, name, picture_url, provider, username, password_hash,"
+            " real_name, nickname, team_name, bike_name, racing_experience, primary_track, registration_complete)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)"
+        ).bind(f"local:{username}", "", real_name, "", "local", username, password_hash,
+               real_name, nickname, team_name, bike_name, racing_experience, primary_track).run()
+    except Exception:
+        # Fallback: minimal insert if profile columns not yet migrated
+        try:
+            res = await env.DB.prepare(
+                "INSERT INTO Users (google_id, email, name, picture_url, provider, nickname)"
+                " VALUES (?, ?, ?, ?, ?, ?)"
+            ).bind(f"local:{username}", "", real_name, "", "local", nickname).run()
+        except Exception as e2:
+            return Response.new(json.dumps({"error": f"Registration failed: {str(e2)}"}), headers=headers, status=500)
     user_id = res.meta.last_row_id
 
     jwt_token = _create_jwt({

@@ -417,13 +417,25 @@ Refer to G-Sum as "tire friction limit." Compare G-Sum max values — if G-Sum i
 
 Coasting means "a phase where the rider is not accelerating, braking, or cornering."
 
-**IMPORTANT: You MUST write the sections in the exact numbered order below (1→2→3→4→5→6). Do NOT reorder them.**
+**IMPORTANT: You MUST write the sections in the exact numbered order below (1→2→3→4→5). Do NOT reorder them.**
 
 ### [Analysis Rules and Guidelines]
 
 1. Session Overview
 - Summarize session info: circuit (venue), date, rider, bike (bike_model/vehicle), condition (dry/wet), tuning (stock/tuned), session type, event name. Omit any fields not present.
 - State the total lap time difference to three decimal places, and summarize in one sentence whether the comparison lap is slower or faster than the reference.
+
+  If rider_ranking data is present, include a ranking table:
+  | Metric | Your Value | Percentile | Rank |
+  |--------|-----------|------------|------|
+  | Best Lap Time | **1:42.351** | **Top 23%** | 5 / 22 |
+  | Max Braking G | **1.12 G** | **Top 15%** | 3 / 22 |
+  | ... | ... | ... | ... |
+
+  Below the table:
+  - **Strengths**: List metrics where percentile is top 30%. Explain WHY this is good in practical terms.
+  - **Weaknesses**: List metrics where percentile is bottom 30%. Explain what this means and how to improve.
+  - Give an overall assessment like "You are a top X% rider at this circuit" based on lap time percentile.
 
 2. Top 3 Improvement Points
 - Summarize the top 3 priorities that will most reduce lap time. Include root causes and specific action plans.
@@ -447,29 +459,6 @@ Coasting means "a phase where the rider is not accelerating, braking, or corneri
   * Coasting penalty: Coasting time (cst_total_time_s) and speed loss (cst_speed_loss_kph). More coasting = wasted time.
   * Brake jerk: Max jerk (max_brake_jerk_g_per_s) and initial mean jerk (mean_brake_jerk_g_per_s). Higher jerk = more aggressive braking. Explain to the rider as "how quickly/hard the brake is grabbed."
 - Coaching points: At the end of each corner, provide 1-2 specific actionable corrections using distance (m) (e.g., "Delay braking onset by 5m and increase initial lever pressure to shorten the braking zone").
-
-6. Rider Level Analysis
-- If rider_ranking data is not present at all, skip this section entirely.
-- If rider_ranking data is present, you MUST create a table showing ALL metrics with their values. Format:
-
-  If has_percentiles=true, create this table:
-  | Metric | Your Value | Percentile | Rank |
-  |--------|-----------|------------|------|
-  | Best Lap Time | **1:42.351** | **Top 23%** | 5 / 22 |
-  | Max Braking G | **1.12 G** | **Top 15%** | 3 / 22 |
-  | ... | ... | ... | ... |
-
-  Then below the table:
-  - **Strengths**: List metrics where percentile is top 30% (low number = good). Explain WHY this is good in practical terms.
-  - **Weaknesses**: List metrics where percentile is bottom 30% (high number = bad). Explain what this means and how to improve.
-  - Give an overall assessment like "이 서킷에서 상위 X% 수준의 라이더입니다" based on lap time percentile.
-
-  If has_percentiles=false (not enough data), create a simpler table:
-  | Metric | Your Value | Assessment |
-  |--------|-----------|-----------|
-  | Max Braking G | **1.12 G** | Good (experienced riders: 1.0-1.3G) |
-  | ... | ... | ... |
-  Provide reference ranges for each metric so the rider can self-assess.
 
 ### [Tone and Style]
 - Maintain a professional, clear, and decisive tone while being encouraging.
@@ -496,13 +485,24 @@ G Sum 값은 "타이어 마찰 한계점"이라고 표기해줘. G Sum 최대값
 코스팅은 "가속도, 감속도, 코너링도 안 한 구간"이라고 표현해줘.
 
 다음의 분석 규칙을 엄격하게 준수하여 마크다운(Markdown) 형식의 체계적인 보고서를 작성해줘.
-**중요: 반드시 아래 번호 순서(1→2→3→4→5→6) 그대로 작성하라. 절대 순서를 바꾸지 마라.**
+**중요: 반드시 아래 번호 순서(1→2→3→4→5) 그대로 작성하라. 절대 순서를 바꾸지 마라.**
 
 ### [분석 규칙 및 가이드라인]
 
 1. 세션 개요
 - 세션 정보를 요약하라: 서킷(venue), 날짜(date), 라이더(rider), 바이크(bike_model/vehicle), 노면 상태(condition: dry/wet), 세팅(tuning: stock/tuned), 세션 타입(session_type), 대회명(event_name). 없는 항목은 생략.
-- 두 랩의 총 랩 타임 차이를 소수점 셋째 자리까지 명시하고, 비교 랩이 기준 랩보다 얼마나 느린지(또는 빠른지) 한 문장으로 핵심 결론을 요약한 후,
+- 두 랩의 총 랩 타임 차이를 소수점 셋째 자리까지 명시하고, 비교 랩이 기준 랩보다 얼마나 느린지(또는 빠른지) 한 문장으로 핵심 결론을 요약
+
+    | 지표 | 내 수치 | 퍼센타일 | 순위 |
+  |------|---------|----------|------|
+  | 베스트 랩타임 | **1:42.351** | **상위 23%** | 5 / 22 |
+  | 최대 브레이킹 G | **1.12 G** | **상위 15%** | 3 / 22 |
+  | ... | ... | ... | ... |
+
+  표 아래에:
+  - **강점**: 퍼센타일이 상위 30% 이내인 지표를 나열. 왜 이것이 좋은 건지 실전적으로 설명.
+  - **약점**: 퍼센타일이 하위 30%인 지표를 나열. 이것이 무엇을 의미하고 어떻게 개선할지 설명.
+  - 랩타임 퍼센타일 기준으로 "이 서킷에서 **상위 X%** 수준의 라이더입니다" 같은 종합 평가를 제시.
 
 2. 핵심 개선 포인트 (Top 3)
 - 랩 타임을 가장 크게 단축할 수 있는 우선순위 3가지를 정리하라. 근본적인 원인과 구체적인 액션 플랜(Action Plan)을 포함하라.
@@ -527,28 +527,6 @@ G Sum 값은 "타이어 마찰 한계점"이라고 표기해줘. G Sum 최대값
   * 브레이크 저크: 최대 저크(\`max_brake_jerk_g_per_s\`)와 초기 평균 저크(\`mean_brake_jerk_g_per_s\`). 저크가 높으면 공격적 브레이킹. 라이더에게는 "브레이크를 잡는 속도/세기"로 설명.
 - 코칭 포인트: 각 코너 끝에 해당 라이더가 즉시 실험해볼 수 있는 구체적인 행동 교정 방법(예: "브레이킹 시작을 5m 늦추고, 초기 악력을 강하게 가져가 브레이킹 구간을 단축하세요")을 1-2개 제시하라. 거리(m) 기반으로 설명할 것.
 
-6. 라이더 수준 분석
-- rider_ranking 데이터가 아예 없으면 이 섹션을 생략하라.
-- rider_ranking 데이터가 있으면 반드시 모든 지표를 표로 보여줘라. 형식:
-
-  퍼센타일 데이터가 있으면(has_percentiles=true) 아래 표 형식:
-  | 지표 | 내 수치 | 퍼센타일 | 순위 |
-  |------|---------|----------|------|
-  | 베스트 랩타임 | **1:42.351** | **상위 23%** | 5 / 22 |
-  | 최대 브레이킹 G | **1.12 G** | **상위 15%** | 3 / 22 |
-  | ... | ... | ... | ... |
-
-  표 아래에:
-  - **강점**: 퍼센타일이 상위 30% 이내인 지표를 나열. 왜 이것이 좋은 건지 실전적으로 설명.
-  - **약점**: 퍼센타일이 하위 30%인 지표를 나열. 이것이 무엇을 의미하고 어떻게 개선할지 설명.
-  - 랩타임 퍼센타일 기준으로 "이 서킷에서 **상위 X%** 수준의 라이더입니다" 같은 종합 평가를 제시.
-
-  퍼센타일 데이터가 없으면(has_percentiles=false) 더 간단한 표:
-  | 지표 | 내 수치 | 평가 |
-  |------|---------|------|
-  | 최대 브레이킹 G | **1.12 G** | 양호 (숙련자 기준: 1.0~1.3G) |
-  | ... | ... | ... |
-  각 지표의 참고 범위를 제시해서 라이더가 자기 수준을 가늠할 수 있게 하라.
 
 ### [어조 및 스타일]
 - 전문가다운 명확하고 단호한 어조를 유지하되, 라이더를 격려하는 긍정적인 태도를 취하라.
@@ -770,12 +748,11 @@ Use the title: # ${rd.venue} Lap Comparison Analysis
 Corners in this session: ${cornerNames}
 
 Section order (MUST follow exactly):
-1. Session Overview
+1. Session Overview (include rider ranking table if rider_ranking data exists)
 2. Top 3 Improvement Points
 3. Positive Feedback
 4. Lap Composition Analysis
 5. Corner-by-Corner Analysis
-6. Rider Level Analysis (only if rider_ranking data exists in JSON)
 
 Rules:
 - Use corner names listed above.
@@ -792,12 +769,11 @@ Rules:
 이 세션의 코너들: ${cornerNames}
 
 섹션 순서 (반드시 이 순서대로 작성할 것):
-1. 세션 개요
+1. 세션 개요 (rider_ranking 데이터가 있으면 퍼센타일 표 포함)
 2. 핵심 개선 포인트 (Top 3)
 3. 잘한 점 (Positive Feedback)
 4. 랩 구성 분석 (Lap Metrics)
 5. 코너별 상세 분석
-6. 라이더 수준 분석 (rider_ranking 데이터가 있을 때만)
 
 규칙:
 - 위에 나열된 코너 이름을 사용합니다.

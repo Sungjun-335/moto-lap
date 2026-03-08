@@ -1,0 +1,1 @@
+ALTER TABLE Users ADD COLUMN bike_name TEXT;
