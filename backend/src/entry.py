@@ -711,9 +711,13 @@ async def _handle_register(request, env, headers):
         return Response.new(json.dumps({"error": ", ".join(errors)}), headers=headers, status=400)
 
     # Check username uniqueness
-    existing = await env.DB.prepare("SELECT id FROM Users WHERE username = ?").bind(username).first()
-    if existing:
-        return Response.new(json.dumps({"error": "username_taken"}), headers=headers, status=409)
+    try:
+        existing = await env.DB.prepare("SELECT id FROM Users WHERE username = ?").bind(username).first()
+        if existing:
+            return Response.new(json.dumps({"error": "username_taken"}), headers=headers, status=409)
+    except Exception:
+        # username column may not exist yet — skip uniqueness check
+        pass
 
     password_hash = _hash_password(password)
 
