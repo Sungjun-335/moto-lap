@@ -47,6 +47,7 @@ interface SessionListProps {
     onSavedSessionSelect: (id: string) => void;
     onSavedSessionDelete: (id: string) => void;
     onSessionMetadataUpdate?: (id: string, metadata: Partial<SessionData['metadata']>) => void;
+    onDeleteAll?: () => void;
     onPairSelect?: (anaId: string, refId: string) => void;
     onBack?: () => void;
 }
@@ -61,6 +62,7 @@ const SessionList: React.FC<SessionListProps> = ({
     onSavedSessionSelect,
     onSavedSessionDelete,
     onSessionMetadataUpdate,
+    onDeleteAll,
     onPairSelect,
     onBack,
 }) => {
@@ -73,6 +75,7 @@ const SessionList: React.FC<SessionListProps> = ({
     // Delete confirmation state
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
     const [deleteConfirmIndex, setDeleteConfirmIndex] = useState<number | null>(null);
+    const [deleteAllConfirm, setDeleteAllConfirm] = useState(false);
 
     // Edit modal state
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -225,6 +228,33 @@ const SessionList: React.FC<SessionListProps> = ({
                 </div>
             )}
 
+            {/* Delete all confirmation modal */}
+            {deleteAllConfirm && (
+                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setDeleteAllConfirm(false)}>
+                    <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 max-w-sm w-full shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <h3 className="text-lg font-bold text-white mb-3">{t.sessions.deleteAll}</h3>
+                        <p className="text-sm text-zinc-400 mb-6">{t.sessions.deleteAllConfirmMessage}</p>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setDeleteAllConfirm(false)}
+                                className="flex-1 px-4 py-2.5 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg transition-colors"
+                            >
+                                {t.upload.duplicateCancel}
+                            </button>
+                            <button
+                                onClick={() => {
+                                    onDeleteAll?.();
+                                    setDeleteAllConfirm(false);
+                                }}
+                                className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors font-medium"
+                            >
+                                {t.sessions.confirmDelete}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <header className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-3">
                     {onBack && (
@@ -242,13 +272,24 @@ const SessionList: React.FC<SessionListProps> = ({
                         </p>
                     </div>
                 </div>
-                <button
-                    onClick={onUploadClick}
-                    className="flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-bold bg-blue-600 hover:bg-blue-500 transition text-white"
-                >
-                    <Plus className="w-4 h-4" />
-                    {t.sessions.uploadSession}
-                </button>
+                <div className="flex items-center gap-2">
+                    {hasAny && onDeleteAll && (
+                        <button
+                            onClick={() => setDeleteAllConfirm(true)}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-zinc-800 hover:bg-red-600 text-zinc-400 hover:text-white border border-zinc-700 hover:border-red-600 transition"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                            {t.sessions.deleteAll}
+                        </button>
+                    )}
+                    <button
+                        onClick={onUploadClick}
+                        className="flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-bold bg-blue-600 hover:bg-blue-500 transition text-white"
+                    >
+                        <Plus className="w-4 h-4" />
+                        {t.sessions.uploadSession}
+                    </button>
+                </div>
             </header>
 
             {selectedAnaId && (

@@ -204,7 +204,6 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, on
             // Track auto-recognition
             const track = matchTrack(data.dataPoints);
             if (track) {
-                console.log(`[FileUpload] Track recognized: ${track.name} (${track.shortName})`);
                 data.metadata.trackId = track.id;
                 // Use recognized track name as venue (replaces garbage from XRK metadata)
                 if (!data.metadata.venue || data.metadata.venue === 'Unknown' || /[\x00-\x1f]/.test(data.metadata.venue)) {
@@ -322,16 +321,13 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, on
                 : 20;
 
             // Local corner detection (with track DB if recognized)
-            console.log("[FileUpload] Running local corner detection, sampleRate:", sampleRate, matchedTrack ? `track: ${matchedTrack.shortName}` : 'no track DB');
             const lapsWithCorners = detectCornersForSession(selectedLaps, sampleRate, matchedTrack ?? undefined);
-            console.log("[FileUpload] Corner detection complete:", lapsWithCorners.map(l => `Lap ${l.index}: ${l.corners?.length ?? 0} corners`));
 
             // Compute formula metrics for each lap
             const lapsWithMetrics = lapsWithCorners.map(lap => ({
                 ...lap,
                 metrics: computeLapMetrics(lap.dataPoints, lap.index, sampleRate),
             }));
-            console.log("[FileUpload] Formula metrics computed for", lapsWithMetrics.length, "laps");
 
             const finalData = {
                 ...parsedData,

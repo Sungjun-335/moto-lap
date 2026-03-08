@@ -74,12 +74,17 @@ async def _get_user_from_request(request, env) -> Optional[dict]:
 
 # ─── Admin Check ───
 
-ADMIN_EMAILS = ['yy95211@gmail.com']
+def _get_admin_emails(env) -> list:
+    val = _get_env_value(env, "ADMIN_EMAILS")
+    if val:
+        return [e.strip() for e in val.split(",") if e.strip()]
+    return []
 
 
 async def _require_admin(request, env) -> Optional[dict]:
     user = await _get_user_from_request(request, env)
-    if not user or user.get("email") not in ADMIN_EMAILS:
+    admin_emails = _get_admin_emails(env)
+    if not user or user.get("email") not in admin_emails:
         return None
     return user
 
@@ -255,12 +260,13 @@ async def _call_lambda(csv_bytes: bytes, env: Any) -> Dict[str, Any]:
 
 # ─── Auth Helpers ───
 
-async def _upsert_user(env, provider: str, provider_id: str, email: str, name: str, picture: str) -> int:
-    """Upsert user by provider. Returns user ID."""
+async def _upsert_user(env, provider: str, provider_id: str, email: str, name: str, picture: str) -> tuple:
+    """Upsert user by provider with email-based account merging. Returns (user_id, is_new, registration_complete)."""
     id_col = f"{provider}_id"
 
+    # 1. Check by provider ID first
     existing = await env.DB.prepare(
-        f"SELECT id FROM Users WHERE {id_col} = ?"
+        f"SELECT id, nickname, registration_complete FROM Users WHERE {id_col} = ?"
     ).bind(provider_id).first()
 
     if existing:
@@ -268,16 +274,30 @@ async def _upsert_user(env, provider: str, provider_id: str, email: str, name: s
         await env.DB.prepare(
             "UPDATE Users SET email = ?, name = ?, picture_url = ? WHERE id = ?"
         ).bind(email, name, picture, user_id).run()
-    else:
-        # For non-Google providers, google_id (NOT NULL) gets '{provider}:{id}'
-        google_id_value = provider_id if provider == "google" else f"{provider}:{provider_id}"
-        res = await env.DB.prepare(
-            f"INSERT INTO Users (google_id, email, name, picture_url, provider, {id_col})"
-            f" VALUES (?, ?, ?, ?, ?, ?)"
-        ).bind(google_id_value, email, name, picture, provider, provider_id).run()
-        user_id = res.meta.last_row_id
+        return (user_id, False, bool(existing.registration_complete))
 
-    return user_id
+    # 2. Check by email for account merging (different provider, same person)
+    if email:
+        email_match = await env.DB.prepare(
+            "SELECT id, nickname, registration_complete FROM Users WHERE email = ?"
+        ).bind(email).first()
+
+        if email_match:
+            user_id = email_match.id
+            await env.DB.prepare(
+                f"UPDATE Users SET {id_col} = ?, name = ?, picture_url = ? WHERE id = ?"
+            ).bind(provider_id, name, picture, user_id).run()
+            return (user_id, False, bool(email_match.registration_complete))
+
+    # 3. New user
+    google_id_value = provider_id if provider == "google" else f"{provider}:{provider_id}"
+    res = await env.DB.prepare(
+        f"INSERT INTO Users (google_id, email, name, picture_url, provider, {id_col})"
+        f" VALUES (?, ?, ?, ?, ?, ?)"
+    ).bind(google_id_value, email, name, picture, provider, provider_id).run()
+    user_id = res.meta.last_row_id
+
+    return (user_id, True, False)
 
 
 # ─── Auth Handlers ───
@@ -334,19 +354,25 @@ async def _handle_auth_google_token(request, env, headers):
         return Response.new(json.dumps({"error": "Invalid token info"}), headers=headers, status=401)
 
     # Upsert user in D1
-    user_id = await _upsert_user(env, "google", google_id, email, name, picture)
+    user_id, is_new, reg_complete = await _upsert_user(env, "google", google_id, email, name, picture)
+
+    # Fetch nickname
+    row = await env.DB.prepare("SELECT nickname FROM Users WHERE id = ?").bind(user_id).first()
+    nickname = row.nickname if row and row.nickname else None
 
     # Create JWT
     jwt_token = _create_jwt({
         "sub": str(user_id),
         "email": email,
-        "name": name,
+        "name": nickname or name,
         "picture": picture,
     }, jwt_secret)
 
     return Response.new(json.dumps({
         "token": jwt_token,
-        "user": {"id": str(user_id), "email": email, "name": name, "picture": picture},
+        "user": {"id": str(user_id), "email": email, "name": nickname or name, "picture": picture},
+        "is_new": is_new,
+        "registration_complete": reg_complete,
     }), headers=headers)
 
 
@@ -398,18 +424,23 @@ async def _handle_auth_google_code(request, env, headers):
     if not google_id or not email:
         return Response.new(json.dumps({"error": "Invalid Google token"}), headers=headers, status=401)
 
-    user_id = await _upsert_user(env, "google", google_id, email, name, picture)
+    user_id, is_new, reg_complete = await _upsert_user(env, "google", google_id, email, name, picture)
+
+    row = await env.DB.prepare("SELECT nickname FROM Users WHERE id = ?").bind(user_id).first()
+    nickname = row.nickname if row and row.nickname else None
 
     jwt_token = _create_jwt({
         "sub": str(user_id),
         "email": email,
-        "name": name,
+        "name": nickname or name,
         "picture": picture,
     }, jwt_secret)
 
     return Response.new(json.dumps({
         "token": jwt_token,
-        "user": {"id": str(user_id), "email": email, "name": name, "picture": picture},
+        "user": {"id": str(user_id), "email": email, "name": nickname or name, "picture": picture},
+        "is_new": is_new,
+        "registration_complete": reg_complete,
     }), headers=headers)
 
 
@@ -471,18 +502,23 @@ async def _handle_auth_kakao_token(request, env, headers):
         return Response.new(json.dumps({"error": "Invalid Kakao user info"}), headers=headers, status=401)
 
     # 3. Upsert + JWT
-    user_id = await _upsert_user(env, "kakao", kakao_id, email, name, picture)
+    user_id, is_new, reg_complete = await _upsert_user(env, "kakao", kakao_id, email, name, picture)
+
+    row = await env.DB.prepare("SELECT nickname FROM Users WHERE id = ?").bind(user_id).first()
+    nickname = row.nickname if row and row.nickname else None
 
     jwt_token = _create_jwt({
         "sub": str(user_id),
         "email": email,
-        "name": name,
+        "name": nickname or name,
         "picture": picture,
     }, jwt_secret)
 
     return Response.new(json.dumps({
         "token": jwt_token,
-        "user": {"id": str(user_id), "email": email, "name": name, "picture": picture},
+        "user": {"id": str(user_id), "email": email, "name": nickname or name, "picture": picture},
+        "is_new": is_new,
+        "registration_complete": reg_complete,
     }), headers=headers)
 
 
@@ -543,18 +579,23 @@ async def _handle_auth_naver_token(request, env, headers):
         return Response.new(json.dumps({"error": "Invalid Naver user info"}), headers=headers, status=401)
 
     # 3. Upsert + JWT
-    user_id = await _upsert_user(env, "naver", naver_id, email, name, picture)
+    user_id, is_new, reg_complete = await _upsert_user(env, "naver", naver_id, email, name, picture)
+
+    row = await env.DB.prepare("SELECT nickname FROM Users WHERE id = ?").bind(user_id).first()
+    nickname = row.nickname if row and row.nickname else None
 
     jwt_token = _create_jwt({
         "sub": str(user_id),
         "email": email,
-        "name": name,
+        "name": nickname or name,
         "picture": picture,
     }, jwt_secret)
 
     return Response.new(json.dumps({
         "token": jwt_token,
-        "user": {"id": str(user_id), "email": email, "name": name, "picture": picture},
+        "user": {"id": str(user_id), "email": email, "name": nickname or name, "picture": picture},
+        "is_new": is_new,
+        "registration_complete": reg_complete,
     }), headers=headers)
 
 
@@ -563,11 +604,172 @@ async def _handle_auth_me(request, env, headers):
     if not user:
         return Response.new(json.dumps({"error": "Unauthorized"}), headers=headers, status=401)
 
+    # Fetch profile from DB
+    user_id = int(user["sub"])
+    row = await env.DB.prepare(
+        "SELECT nickname, registration_complete FROM Users WHERE id = ?"
+    ).bind(user_id).first()
+    nickname = row.nickname if row and row.nickname else None
+    reg_complete = bool(row.registration_complete) if row else False
+
     return Response.new(json.dumps({
         "id": user.get("sub"),
         "email": user.get("email"),
-        "name": user.get("name"),
+        "name": nickname or user.get("name"),
         "picture": user.get("picture"),
+        "nickname": nickname,
+        "registration_complete": reg_complete,
+    }), headers=headers)
+
+
+async def _handle_set_nickname(request, env, headers):
+    user = await _get_user_from_request(request, env)
+    if not user:
+        return Response.new(json.dumps({"error": "Unauthorized"}), headers=headers, status=401)
+
+    content_bytes = await request.bytes()
+    body = json.loads(bytes(content_bytes).decode("utf-8"))
+    nickname = body.get("nickname", "").strip()
+
+    if not nickname or len(nickname) > 20:
+        return Response.new(json.dumps({"error": "Nickname must be 1-20 characters"}), headers=headers, status=400)
+
+    user_id = int(user["sub"])
+    await env.DB.prepare("UPDATE Users SET nickname = ? WHERE id = ?").bind(nickname, user_id).run()
+
+    # Reissue JWT with updated name
+    jwt_secret = _get_env_value(env, "JWT_SECRET")
+    jwt_token = _create_jwt({
+        "sub": str(user_id),
+        "email": user.get("email"),
+        "name": nickname,
+        "picture": user.get("picture"),
+    }, jwt_secret)
+
+    return Response.new(json.dumps({
+        "ok": True,
+        "token": jwt_token,
+        "user": {"id": str(user_id), "email": user.get("email"), "name": nickname, "picture": user.get("picture")},
+    }), headers=headers)
+
+
+def _hash_password(password: str, salt: str = None) -> str:
+    """Hash password with PBKDF2-SHA256. Returns salt:hash."""
+    if salt is None:
+        salt = base64.b64encode(hashlib.sha256(str(time.time()).encode()).digest()[:16]).decode("ascii")
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000)
+    return f"{salt}:{base64.b64encode(dk).decode('ascii')}"
+
+
+def _verify_password(password: str, stored_hash: str) -> bool:
+    """Verify password against stored salt:hash."""
+    if ":" not in stored_hash:
+        return False
+    salt = stored_hash.split(":")[0]
+    return _hash_password(password, salt) == stored_hash
+
+
+async def _handle_register(request, env, headers):
+    """Complete registration after OAuth — set username, password, profile fields."""
+    user = await _get_user_from_request(request, env)
+    if not user:
+        return Response.new(json.dumps({"error": "Unauthorized"}), headers=headers, status=401)
+
+    content_bytes = await request.bytes()
+    body = json.loads(bytes(content_bytes).decode("utf-8"))
+
+    username = body.get("username", "").strip()
+    password = body.get("password", "")
+    real_name = body.get("realName", "").strip()
+    phone = body.get("phone", "").strip()
+    nickname = body.get("nickname", "").strip()
+    team_name = body.get("teamName", "").strip() or None
+    bike_name = body.get("bikeName", "").strip() or None
+    racing_experience = body.get("racingExperience", "").strip() or None
+    primary_track = body.get("primaryTrack", "").strip() or None
+
+    # Validate required fields
+    errors = []
+    if not username or len(username) < 4 or len(username) > 20:
+        errors.append("username must be 4-20 characters")
+    if not password or len(password) < 6:
+        errors.append("password must be at least 6 characters")
+    if not real_name:
+        errors.append("realName is required")
+    if not phone:
+        errors.append("phone is required")
+    if not nickname or len(nickname) > 20:
+        errors.append("nickname must be 1-20 characters")
+
+    if errors:
+        return Response.new(json.dumps({"error": ", ".join(errors)}), headers=headers, status=400)
+
+    # Check username uniqueness
+    existing = await env.DB.prepare("SELECT id FROM Users WHERE username = ?").bind(username).first()
+    if existing:
+        return Response.new(json.dumps({"error": "username_taken"}), headers=headers, status=409)
+
+    user_id = int(user["sub"])
+    password_hash = _hash_password(password)
+
+    await env.DB.prepare(
+        "UPDATE Users SET username = ?, password_hash = ?, real_name = ?, phone = ?, nickname = ?,"
+        " team_name = ?, bike_name = ?, racing_experience = ?, primary_track = ?,"
+        " registration_complete = 1 WHERE id = ?"
+    ).bind(username, password_hash, real_name, phone, nickname,
+           team_name, bike_name, racing_experience, primary_track, user_id).run()
+
+    # Reissue JWT with nickname
+    jwt_secret = _get_env_value(env, "JWT_SECRET")
+    jwt_token = _create_jwt({
+        "sub": str(user_id),
+        "email": user.get("email"),
+        "name": nickname,
+        "picture": user.get("picture"),
+    }, jwt_secret)
+
+    return Response.new(json.dumps({
+        "ok": True,
+        "token": jwt_token,
+        "user": {"id": str(user_id), "email": user.get("email"), "name": nickname, "picture": user.get("picture")},
+    }), headers=headers)
+
+
+async def _handle_login(request, env, headers):
+    """Login with username + password."""
+    jwt_secret = _get_env_value(env, "JWT_SECRET")
+    if not jwt_secret:
+        return Response.new(json.dumps({"error": "Auth not configured"}), headers=headers, status=500)
+
+    content_bytes = await request.bytes()
+    body = json.loads(bytes(content_bytes).decode("utf-8"))
+    username = body.get("username", "").strip()
+    password = body.get("password", "")
+
+    if not username or not password:
+        return Response.new(json.dumps({"error": "Missing username or password"}), headers=headers, status=400)
+
+    row = await env.DB.prepare(
+        "SELECT id, email, nickname, picture_url, password_hash, registration_complete FROM Users WHERE username = ?"
+    ).bind(username).first()
+
+    if not row or not row.password_hash:
+        return Response.new(json.dumps({"error": "invalid_credentials"}), headers=headers, status=401)
+
+    if not _verify_password(password, row.password_hash):
+        return Response.new(json.dumps({"error": "invalid_credentials"}), headers=headers, status=401)
+
+    jwt_token = _create_jwt({
+        "sub": str(row.id),
+        "email": row.email or "",
+        "name": row.nickname or "",
+        "picture": row.picture_url or "",
+    }, jwt_secret)
+
+    return Response.new(json.dumps({
+        "token": jwt_token,
+        "user": {"id": str(row.id), "email": row.email or "", "name": row.nickname or "", "picture": row.picture_url or ""},
+        "registration_complete": bool(row.registration_complete),
     }), headers=headers)
 
 
@@ -826,46 +1028,70 @@ async def on_fetch(request, env):
     if request.method == "POST" and "/api/auth/google-token" in url:
         try:
             return await _handle_auth_google_token(request, env, headers)
-        except Exception as e:
+        except Exception:
             import traceback
             traceback.print_exc()
-            return Response.new(json.dumps({"error": str(e)}), headers=headers, status=500)
+            return Response.new(json.dumps({"error": "Authentication failed"}), headers=headers, status=500)
 
     if request.method == "POST" and "/api/auth/google/token" in url:
         try:
             return await _handle_auth_google_code(request, env, headers)
-        except Exception as e:
+        except Exception:
             import traceback
             traceback.print_exc()
-            return Response.new(json.dumps({"error": str(e)}), headers=headers, status=500)
+            return Response.new(json.dumps({"error": "Authentication failed"}), headers=headers, status=500)
 
     if request.method == "POST" and "/api/auth/kakao/token" in url:
         try:
             return await _handle_auth_kakao_token(request, env, headers)
-        except Exception as e:
+        except Exception:
             import traceback
             traceback.print_exc()
-            return Response.new(json.dumps({"error": str(e)}), headers=headers, status=500)
+            return Response.new(json.dumps({"error": "Authentication failed"}), headers=headers, status=500)
 
     if request.method == "POST" and "/api/auth/naver/token" in url:
         try:
             return await _handle_auth_naver_token(request, env, headers)
-        except Exception as e:
+        except Exception:
             import traceback
             traceback.print_exc()
-            return Response.new(json.dumps({"error": str(e)}), headers=headers, status=500)
+            return Response.new(json.dumps({"error": "Authentication failed"}), headers=headers, status=500)
 
     if request.method == "GET" and "/api/auth/me" in url:
         return await _handle_auth_me(request, env, headers)
+
+    if request.method == "PUT" and "/api/auth/nickname" in url:
+        try:
+            return await _handle_set_nickname(request, env, headers)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            return Response.new(json.dumps({"error": "Failed to update nickname"}), headers=headers, status=500)
+
+    if request.method == "POST" and "/api/auth/register" in url:
+        try:
+            return await _handle_register(request, env, headers)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            return Response.new(json.dumps({"error": "Registration failed"}), headers=headers, status=500)
+
+    if request.method == "POST" and "/api/auth/login" in url:
+        try:
+            return await _handle_login(request, env, headers)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            return Response.new(json.dumps({"error": "Login failed"}), headers=headers, status=500)
 
     # --- Venue stats ---
     if request.method == "POST" and "/api/stats/venue" in url:
         try:
             return await _handle_venue_stats(request, env, headers)
-        except Exception as e:
+        except Exception:
             import traceback
             traceback.print_exc()
-            return Response.new(json.dumps({"error": str(e)}), headers=headers, status=500)
+            return Response.new(json.dumps({"error": "Failed to compute venue stats"}), headers=headers, status=500)
 
     # --- Session list (authenticated) ---
     if request.method == "GET" and "/api/sessions" in url:
@@ -901,10 +1127,10 @@ async def on_fetch(request, env):
                 tracks.append(track)
 
             return Response.new(json.dumps({"tracks": tracks}), headers=headers)
-        except Exception as e:
+        except Exception:
             import traceback
             traceback.print_exc()
-            return Response.new(json.dumps({"error": str(e)}), headers=headers, status=500)
+            return Response.new(json.dumps({"error": "Failed to fetch tracks"}), headers=headers, status=500)
 
     if request.method == "PUT" and "/api/tracks/" in url:
         try:
@@ -945,10 +1171,10 @@ async def on_fetch(request, env):
             ).run()
 
             return Response.new(json.dumps({"ok": True, "id": track_id}), headers=headers)
-        except Exception as e:
+        except Exception:
             import traceback
             traceback.print_exc()
-            return Response.new(json.dumps({"error": str(e)}), headers=headers, status=500)
+            return Response.new(json.dumps({"error": "Failed to update track"}), headers=headers, status=500)
 
     # --- Training data export ---
     if request.method == "GET" and "/api/training-data" in url:
@@ -1034,17 +1260,17 @@ async def on_fetch(request, env):
             else:
                 return Response.new(json.dumps({"rows": rows, "count": len(rows)}), headers=headers)
 
-        except Exception as e:
+        except Exception:
             import traceback
             traceback.print_exc()
-            return Response.new(json.dumps({"error": str(e)}), headers=headers, status=500)
+            return Response.new(json.dumps({"error": "Failed to export training data"}), headers=headers, status=500)
 
     if request.method == "GET" and url.endswith("/api/reports/quota"):
         user = await _get_user_from_request(request, env)
         if not user:
             return Response.new(json.dumps({"error": "Unauthorized"}), headers=headers, status=401)
         email = user.get("email", "")
-        is_admin = email in ADMIN_EMAILS
+        is_admin = email in _get_admin_emails(env)
         if is_admin:
             return Response.new(json.dumps({"used": 0, "limit": -1, "plan": "unlimited"}), headers=headers)
         user_id = int(user["sub"])
@@ -1062,7 +1288,7 @@ async def on_fetch(request, env):
                 return Response.new(json.dumps({"error": "Unauthorized"}), headers=headers, status=401)
 
             email = user.get("email", "")
-            is_admin = email in ADMIN_EMAILS
+            is_admin = email in _get_admin_emails(env)
             user_id = int(user["sub"])
 
             # Check report quota for non-admin users
@@ -1089,9 +1315,9 @@ async def on_fetch(request, env):
                 ).bind(user_id).run()
 
             return Response.new(json.dumps(result), headers=headers)
-        except ValueError as e:
-            return Response.new(json.dumps({"error": str(e)}), headers=headers, status=400)
-        except Exception as e:
+        except ValueError:
+            return Response.new(json.dumps({"error": "Invalid report request"}), headers=headers, status=400)
+        except Exception:
             import traceback
             traceback.print_exc()
             return Response.new(json.dumps({"error": "Report generation failed"}), headers=headers, status=500)
@@ -1196,10 +1422,9 @@ async def on_fetch(request, env):
                     ).run()
 
             return Response.new(json.dumps({"session_id": str(session_id), "corners": corners, "lap_metrics": lap_metrics_list}), headers=headers)
-        except Exception as e:
+        except Exception:
             import traceback
-
             traceback.print_exc()
-            return Response.new(json.dumps({"error": str(e)}), headers=headers, status=500)
+            return Response.new(json.dumps({"error": "Failed to save session"}), headers=headers, status=500)
 
     return Response.new(json.dumps({"status": "ok"}), headers=headers)

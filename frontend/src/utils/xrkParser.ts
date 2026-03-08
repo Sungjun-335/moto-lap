@@ -356,15 +356,11 @@ export const parseXrk = (file: File): Promise<SessionData> => {
                 const buf = new Uint8Array(arrayBuf);
                 const dv = new DataView(arrayBuf);
 
-                console.log(`[XRK Parser] File size: ${buf.length} bytes`);
-
                 // 1. Parse channel definitions
-                const channels = parseChannels(buf, dv);
-                console.log(`[XRK Parser] Found ${channels.length} channels:`, channels.map(c => c.shortName).join(', '));
+                parseChannels(buf, dv);
 
                 // 2. Parse GPS points (ECEF → lat/lon + velocity → speed)
                 const gpsPoints = parseGpsPoints(buf, dv);
-                console.log(`[XRK Parser] Found ${gpsPoints.length} GPS points`);
 
                 if (gpsPoints.length < 10) {
                     reject(new Error('XRK file contains insufficient GPS data'));
@@ -373,11 +369,9 @@ export const parseXrk = (file: File): Promise<SessionData> => {
 
                 // 3. Parse LAP entries
                 const lapEntries = parseLaps(buf, dv);
-                console.log(`[XRK Parser] Found ${lapEntries.length} laps`);
 
                 // 4. Parse metadata
                 const meta = parseMetadata(buf);
-                console.log(`[XRK Parser] Metadata:`, meta);
 
                 // 5. Calculate timing parameters
                 const firstTs = gpsPoints[0].timestamp;
@@ -408,13 +402,10 @@ export const parseXrk = (file: File): Promise<SessionData> => {
                         ticksPerSec = commonRates.reduce((best, rate) =>
                             Math.abs(rate - median) < Math.abs(best - median) ? rate : best
                         );
-                        console.log(`[XRK Parser] ticksPerSec estimates: median=${median.toFixed(1)}, rounded to ${ticksPerSec}`);
                     }
                 }
 
                 const sampleInterval = avgTicksPerSample / ticksPerSec;
-                const gpsHz = Math.round(ticksPerSec / avgTicksPerSample);
-                console.log(`[XRK Parser] ticksPerSec=${ticksPerSec} (auto-detected), GPS: ${gpsHz}Hz (${avgTicksPerSample.toFixed(1)} ticks/sample, dt=${sampleInterval.toFixed(4)}s), total ${gpsPoints.length} pts, session ${((lastTs - firstTs) / ticksPerSec).toFixed(1)}s`);
 
                 // 6. Compute derived channels
                 const { latG, lonG, gyroZ } = computeDerivedChannels(gpsPoints, sampleInterval);
@@ -461,12 +452,6 @@ export const parseXrk = (file: File): Promise<SessionData> => {
 
                 if (distLResetTimes.length > 0) {
                     beaconMarkers = distLResetTimes;
-                    console.log(`[XRK Parser] Using DistL reset beacons (${beaconMarkers.length}):`, beaconMarkers.map(t => t.toFixed(2)));
-                    // Log hLAP data for comparison
-                    for (const l of lapEntries) {
-                        const startSec = (l.startTimestamp - firstTs) / ticksPerSec;
-                        console.log(`[XRK Parser] hLAP ${l.lapNumber}: startTs=${startSec.toFixed(2)}s, dur=${l.durationMs} (raw)`);
-                    }
                 } else {
                     // Fallback to hLAP timestamps
                     const completeLaps = lapEntries
@@ -474,16 +459,11 @@ export const parseXrk = (file: File): Promise<SessionData> => {
                         .sort((a, b) => a.startTimestamp - b.startTimestamp);
                     beaconMarkers = completeLaps
                         .map(l => (l.startTimestamp - firstTs) / ticksPerSec);
-                    console.log(`[XRK Parser] Using hLAP beacons (${beaconMarkers.length}):`, beaconMarkers.map(t => t.toFixed(2)));
                 }
-
-                console.log(`[XRK Parser] Beacon markers (seconds):`, beaconMarkers);
 
                 // 9. Segment into laps and filter outliers
                 const rawLaps = segmentLaps(dataPoints, beaconMarkers);
                 const laps = filterOutlierLaps(rawLaps);
-
-                console.log(`[XRK Parser] Segmented ${laps.length} laps`);
 
                 // Determine venue: prefer track name from metadata
                 // Filter out garbage binary data and channel names

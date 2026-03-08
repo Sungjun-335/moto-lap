@@ -102,6 +102,11 @@ export async function deleteSession(id: string): Promise<void> {
     // Reports are intentionally preserved — they remain accessible via "Past Reports" in the modal
 }
 
+export async function deleteAllSessions(): Promise<void> {
+    const db = await getDB();
+    await db.clear(STORE_NAME);
+}
+
 // ─── Reports ───
 
 export interface StoredReport {

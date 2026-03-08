@@ -5,6 +5,8 @@ compatibility_flags = ["python_workers"]
 account_id = "74762af8c4ebccbb091ce61c93b9185a"
 
 [vars]
+# Admin email addresses (comma-separated)
+ADMIN_EMAILS = "yy95211@gmail.com"
 # Lambda Function URL for /api/sessions (required)
 LAMBDA_URL = ""
 # Optional bearer token for Lambda auth

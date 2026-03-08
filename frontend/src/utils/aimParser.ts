@@ -147,8 +147,6 @@ export const parseAimCsv = (file: File, customMapping?: Record<string, string>):
                         throw new MissingColumnError(missing, headerRow);
                     }
 
-                    console.log('[AIM Parser] Column Map:', colMap);
-
                     const dataPoints: LapData[] = [];
                     let dataRowStartIndex = headerRowIndex + 1;
 

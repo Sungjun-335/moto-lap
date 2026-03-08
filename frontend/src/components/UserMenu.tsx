@@ -25,20 +25,48 @@ const GoogleIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 
 const UserMenu: React.FC = () => {
-    const { user, isAuthenticated, isLoading, authError, loginWithGoogle, loginWithKakao, loginWithNaver, logout, clearError } = useAuth();
+    const { user, isAuthenticated, isLoading, authError, loginWithGoogle, loginWithKakao, loginWithNaver, loginWithCredentials, logout, clearError } = useAuth();
     const { t } = useTranslation();
     const [open, setOpen] = useState(false);
+    const [showLoginForm, setShowLoginForm] = useState(false);
+    const [loginUsername, setLoginUsername] = useState('');
+    const [loginPassword, setLoginPassword] = useState('');
+    const [loginError, setLoginError] = useState('');
+    const [loginLoading, setLoginLoading] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
             if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
                 setOpen(false);
+                setShowLoginForm(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
+
+    const handleCredentialLogin = async () => {
+        if (!loginUsername.trim() || !loginPassword) return;
+        setLoginError('');
+        setLoginLoading(true);
+        try {
+            await loginWithCredentials(loginUsername.trim(), loginPassword);
+            setOpen(false);
+            setShowLoginForm(false);
+            setLoginUsername('');
+            setLoginPassword('');
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (msg === 'invalid_credentials') {
+                setLoginError(t.auth.invalidCredentials);
+            } else {
+                setLoginError(msg);
+            }
+        } finally {
+            setLoginLoading(false);
+        }
+    };
 
     if (isLoading) return null;
 
@@ -69,28 +97,85 @@ const UserMenu: React.FC = () => {
                     </button>
 
                     {open && (
-                        <div className="absolute right-0 top-full mt-2 z-50 w-56 rounded-xl border border-white/10 bg-zinc-900 p-2 shadow-xl">
-                            <button
-                                onClick={() => { setOpen(false); loginWithGoogle(); }}
-                                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/10"
-                            >
-                                <GoogleIcon className="h-4 w-4" />
-                                {t.auth.signInGoogle}
-                            </button>
-                            <button
-                                onClick={() => { setOpen(false); loginWithKakao(); }}
-                                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/10"
-                            >
-                                <KakaoIcon className="h-4 w-4 text-[#FEE500]" />
-                                {t.auth.signInKakao}
-                            </button>
-                            <button
-                                onClick={() => { setOpen(false); loginWithNaver(); }}
-                                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/10"
-                            >
-                                <NaverIcon className="h-4 w-4 text-[#03C75A]" />
-                                {t.auth.signInNaver}
-                            </button>
+                        <div className="absolute right-0 top-full mt-2 z-50 w-64 rounded-xl border border-white/10 bg-zinc-900 p-3 shadow-xl">
+                            {!showLoginForm ? (
+                                <>
+                                    {/* OAuth buttons */}
+                                    <button
+                                        onClick={() => { setOpen(false); loginWithGoogle(); }}
+                                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/10"
+                                    >
+                                        <GoogleIcon className="h-4 w-4" />
+                                        {t.auth.signInGoogle}
+                                    </button>
+                                    <button
+                                        onClick={() => { setOpen(false); loginWithKakao(); }}
+                                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/10"
+                                    >
+                                        <KakaoIcon className="h-4 w-4 text-[#FEE500]" />
+                                        {t.auth.signInKakao}
+                                    </button>
+                                    <button
+                                        onClick={() => { setOpen(false); loginWithNaver(); }}
+                                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/10"
+                                    >
+                                        <NaverIcon className="h-4 w-4 text-[#03C75A]" />
+                                        {t.auth.signInNaver}
+                                    </button>
+
+                                    <div className="flex items-center gap-2 my-2">
+                                        <div className="flex-1 h-px bg-zinc-700" />
+                                        <span className="text-[10px] text-zinc-500">{t.auth.or}</span>
+                                        <div className="flex-1 h-px bg-zinc-700" />
+                                    </div>
+
+                                    <button
+                                        onClick={() => setShowLoginForm(true)}
+                                        className="w-full rounded-lg px-3 py-2 text-sm text-zinc-400 hover:text-white hover:bg-white/10 transition"
+                                    >
+                                        {t.auth.signInWithId}
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    {/* Username/Password login form */}
+                                    {loginError && (
+                                        <div className="mb-2 px-2 py-1.5 rounded bg-red-900/40 border border-red-700/50 text-xs text-red-400">
+                                            {loginError}
+                                        </div>
+                                    )}
+                                    <input
+                                        type="text"
+                                        value={loginUsername}
+                                        onChange={e => setLoginUsername(e.target.value)}
+                                        placeholder={t.auth.usernamePlaceholder}
+                                        className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none mb-2"
+                                        onKeyDown={e => e.key === 'Enter' && handleCredentialLogin()}
+                                        autoFocus
+                                    />
+                                    <input
+                                        type="password"
+                                        value={loginPassword}
+                                        onChange={e => setLoginPassword(e.target.value)}
+                                        placeholder={t.auth.passwordPlaceholder}
+                                        className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none mb-2"
+                                        onKeyDown={e => e.key === 'Enter' && handleCredentialLogin()}
+                                    />
+                                    <button
+                                        onClick={handleCredentialLogin}
+                                        disabled={loginLoading || !loginUsername.trim() || !loginPassword}
+                                        className="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-50 transition mb-2"
+                                    >
+                                        {loginLoading ? '...' : t.auth.signIn}
+                                    </button>
+                                    <button
+                                        onClick={() => { setShowLoginForm(false); setLoginError(''); }}
+                                        className="w-full text-xs text-zinc-500 hover:text-zinc-300 transition"
+                                    >
+                                        {t.common.back}
+                                    </button>
+                                </>
+                            )}
                         </div>
                     )}
                 </>

@@ -134,6 +134,8 @@ export interface Translations {
         pastReports: string;
         editSession: string;
         save: string;
+        deleteAll: string;
+        deleteAllConfirmMessage: string;
     };
     dashboard: {
         backToSessions: string;
@@ -296,7 +298,46 @@ export interface Translations {
         signInGoogle: string;
         signInKakao: string;
         signInNaver: string;
+        signInWithId: string;
+        or: string;
         signOut: string;
+        welcomeTitle: string;
+        nicknamePrompt: string;
+        nicknamePlaceholder: string;
+        skipNickname: string;
+        // Registration
+        registerTitle: string;
+        registerSubtitle: string;
+        registerButton: string;
+        registerLater: string;
+        username: string;
+        usernamePlaceholder: string;
+        usernameMinLength: string;
+        usernameTaken: string;
+        password: string;
+        passwordPlaceholder: string;
+        passwordConfirm: string;
+        passwordConfirmPlaceholder: string;
+        passwordMinLength: string;
+        passwordMismatch: string;
+        realName: string;
+        realNamePlaceholder: string;
+        realNameRequired: string;
+        phone: string;
+        phonePlaceholder: string;
+        phoneRequired: string;
+        nickname: string;
+        nicknameInvalid: string;
+        optionalFields: string;
+        teamName: string;
+        teamNamePlaceholder: string;
+        bikeName: string;
+        bikeNamePlaceholder: string;
+        racingExperience: string;
+        racingExperiencePlaceholder: string;
+        primaryTrack: string;
+        primaryTrackPlaceholder: string;
+        invalidCredentials: string;
     };
     admin: {
         trackManager: string;

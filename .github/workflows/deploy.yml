@@ -76,6 +76,7 @@ jobs:
           VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
           VITE_KAKAO_CLIENT_ID: ${{ vars.VITE_KAKAO_CLIENT_ID }}
           VITE_NAVER_CLIENT_ID: ${{ vars.VITE_NAVER_CLIENT_ID }}
+          VITE_ADMIN_EMAILS: ${{ vars.VITE_ADMIN_EMAILS }}
 
       - name: Deploy Worker (Assets)
         working-directory: frontend

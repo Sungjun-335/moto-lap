@@ -380,12 +380,10 @@ function enrichCornersWithDriving(corners: Corner[], lap: Lap, sampleRate: numbe
 export function detectCornersForSession(laps: Lap[], sampleRate: number, track?: Track): Lap[] {
     // Track DB mode: use defined corner positions for consistent detection
     if (track) {
-        console.log(`[CornerDetection] Using track DB: ${track.shortName} (${track.corners.length} corners)`);
         return laps.map(lap => {
             const corners = detectCornersFromTrack(lap, track, sampleRate);
             const withDriving = enrichCornersWithDriving(corners, lap, sampleRate);
             const enriched = enrichCornersWithGeometry(withDriving, lap.dataPoints, track);
-            console.log(`[CornerDetection] Lap ${lap.index}: ${enriched.length} corners from track DB`);
             return { ...lap, corners: enriched };
         });
     }
@@ -401,7 +399,6 @@ export function detectCornersForSession(laps: Lap[], sampleRate: number, track?:
     const refCorners = detectCorners(refLap, sampleRate);
     const refWithDriving = enrichCornersWithDriving(refCorners, refLap, sampleRate);
     const enrichedRefCorners = enrichCornersWithGeometry(refWithDriving, refLap.dataPoints);
-    console.log(`[CornerDetection] Reference Lap ${refLap.index}: ${enrichedRefCorners.length} corners detected`);
 
     return laps.map(lap => {
         if (lap.index === refLap.index) {
