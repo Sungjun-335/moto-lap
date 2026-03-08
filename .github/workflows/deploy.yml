@@ -32,6 +32,17 @@ jobs:
         working-directory: backend
         run: npm install
 
+      - name: Run D1 Migrations
+        working-directory: backend
+        run: |
+          for f in migrations/*.sql; do
+            echo "Running migration: $f"
+            npx wrangler d1 execute motolap-db --file="$f" --remote || true
+          done
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       - name: Deploy Worker
         working-directory: backend
         run: uv run pywrangler deploy
