@@ -678,10 +678,10 @@ def _verify_password(password: str, stored_hash: str) -> bool:
 
 
 async def _handle_register(request, env, headers):
-    """Complete registration after OAuth — set username, password, profile fields."""
-    user = await _get_user_from_request(request, env)
-    if not user:
-        return Response.new(json.dumps({"error": "Unauthorized"}), headers=headers, status=401)
+    """Create a new account with username/password (no OAuth required)."""
+    jwt_secret = _get_env_value(env, "JWT_SECRET")
+    if not jwt_secret:
+        return Response.new(json.dumps({"error": "Auth not configured"}), headers=headers, status=500)
 
     content_bytes = await request.bytes()
     body = json.loads(bytes(content_bytes).decode("utf-8"))
@@ -689,7 +689,6 @@ async def _handle_register(request, env, headers):
     username = body.get("username", "").strip()
     password = body.get("password", "")
     real_name = body.get("realName", "").strip()
-    phone = body.get("phone", "").strip()
     nickname = body.get("nickname", "").strip()
     team_name = body.get("teamName", "").strip() or None
     bike_name = body.get("bikeName", "").strip() or None
@@ -700,12 +699,11 @@ async def _handle_register(request, env, headers):
     errors = []
     if not username or len(username) < 4 or len(username) > 20:
         errors.append("username must be 4-20 characters")
-    if not password or len(password) < 6:
-        errors.append("password must be at least 6 characters")
+    import re as _re
+    if not password or len(password) < 8 or not _re.search(r'[!@#$%^&*()\-_=+\[\]{};:\'",.<>/?\\|`~]', password):
+        errors.append("password must be at least 8 characters with a special character")
     if not real_name:
         errors.append("realName is required")
-    if not phone:
-        errors.append("phone is required")
     if not nickname or len(nickname) > 20:
         errors.append("nickname must be 1-20 characters")
 
@@ -717,29 +715,29 @@ async def _handle_register(request, env, headers):
     if existing:
         return Response.new(json.dumps({"error": "username_taken"}), headers=headers, status=409)
 
-    user_id = int(user["sub"])
     password_hash = _hash_password(password)
 
-    await env.DB.prepare(
-        "UPDATE Users SET username = ?, password_hash = ?, real_name = ?, phone = ?, nickname = ?,"
-        " team_name = ?, bike_name = ?, racing_experience = ?, primary_track = ?,"
-        " registration_complete = 1 WHERE id = ?"
-    ).bind(username, password_hash, real_name, phone, nickname,
-           team_name, bike_name, racing_experience, primary_track, user_id).run()
+    # Insert new user
+    res = await env.DB.prepare(
+        "INSERT INTO Users (google_id, email, name, picture_url, provider, username, password_hash,"
+        " real_name, nickname, team_name, bike_name, racing_experience, primary_track, registration_complete)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)"
+    ).bind(f"local:{username}", "", real_name, "", "local", username, password_hash,
+           real_name, nickname, team_name, bike_name, racing_experience, primary_track).run()
+    user_id = res.meta.last_row_id
 
-    # Reissue JWT with nickname
-    jwt_secret = _get_env_value(env, "JWT_SECRET")
     jwt_token = _create_jwt({
         "sub": str(user_id),
-        "email": user.get("email"),
+        "email": "",
         "name": nickname,
-        "picture": user.get("picture"),
+        "picture": "",
     }, jwt_secret)
 
     return Response.new(json.dumps({
         "ok": True,
         "token": jwt_token,
-        "user": {"id": str(user_id), "email": user.get("email"), "name": nickname, "picture": user.get("picture")},
+        "user": {"id": str(user_id), "email": "", "name": nickname, "picture": ""},
+        "registration_complete": True,
     }), headers=headers)
 
 

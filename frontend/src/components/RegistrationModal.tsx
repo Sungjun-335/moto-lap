@@ -11,7 +11,6 @@ const RegistrationModal: React.FC = () => {
     const [password, setPassword] = useState('');
     const [passwordConfirm, setPasswordConfirm] = useState('');
     const [realName, setRealName] = useState('');
-    const [phone, setPhone] = useState('');
     const [nickname, setNickname] = useState('');
     const [teamName, setTeamName] = useState('');
     const [bikeName, setBikeName] = useState('');
@@ -29,7 +28,7 @@ const RegistrationModal: React.FC = () => {
         if (!username.trim() || username.trim().length < 4) {
             setError(t.auth.usernameMinLength); return;
         }
-        if (!password || password.length < 6) {
+        if (!password || password.length < 8 || !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password)) {
             setError(t.auth.passwordMinLength); return;
         }
         if (password !== passwordConfirm) {
@@ -37,9 +36,6 @@ const RegistrationModal: React.FC = () => {
         }
         if (!realName.trim()) {
             setError(t.auth.realNameRequired); return;
-        }
-        if (!phone.trim()) {
-            setError(t.auth.phoneRequired); return;
         }
         if (!nickname.trim() || nickname.trim().length > 20) {
             setError(t.auth.nicknameInvalid); return;
@@ -51,7 +47,6 @@ const RegistrationModal: React.FC = () => {
                 username: username.trim(),
                 password,
                 realName: realName.trim(),
-                phone: phone.trim(),
                 nickname: nickname.trim(),
                 teamName: teamName.trim() || undefined,
                 bikeName: bikeName.trim() || undefined,
@@ -106,17 +101,10 @@ const RegistrationModal: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                        <div className="flex flex-col">
-                            <label className={labelClass}>{t.auth.realName} *</label>
-                            <input type="text" value={realName} onChange={e => setRealName(e.target.value)}
-                                placeholder={t.auth.realNamePlaceholder} className={inputClass} />
-                        </div>
-                        <div className="flex flex-col">
-                            <label className={labelClass}>{t.auth.phone} *</label>
-                            <input type="tel" value={phone} onChange={e => setPhone(e.target.value)}
-                                placeholder={t.auth.phonePlaceholder} className={inputClass} />
-                        </div>
+                    <div className="flex flex-col">
+                        <label className={labelClass}>{t.auth.realName} *</label>
+                        <input type="text" value={realName} onChange={e => setRealName(e.target.value)}
+                            placeholder={t.auth.realNamePlaceholder} className={inputClass} />
                     </div>
 
                     <div className="flex flex-col">
