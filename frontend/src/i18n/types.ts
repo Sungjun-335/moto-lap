@@ -111,6 +111,10 @@ export interface Translations {
         batchComplete: string;
         batchFailed: string;
         batchSkipped: string;
+        duplicateFileDetected: string;
+        duplicateFileMessage: string;
+        duplicateContinue: string;
+        duplicateCancel: string;
     };
     sessions: {
         title: string;

@@ -13,6 +13,7 @@ interface FileUploadProps {
     onDataLoaded: (data: SessionData) => void;
     onBatchLoaded?: (sessions: SessionData[]) => void;
     onCancel?: () => void;
+    existingFileNames?: string[];
 }
 
 const LapMiniMap: React.FC<{ dataPoints: LapData[] }> = ({ dataPoints }) => {
@@ -145,7 +146,7 @@ function saveRiderName(name: string) {
     localStorage.setItem(RIDER_NAMES_KEY, JSON.stringify(filtered.slice(0, 20)));
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, onCancel }) => {
+const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, onCancel, existingFileNames = [] }) => {
     const { t } = useTranslation();
     const [isDragging, setIsDragging] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -174,6 +175,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, on
     const [fileName, setFileName] = useState('');
 
     const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
+    const [duplicateConfirm, setDuplicateConfirm] = useState<{ files: File[]; duplicates: string[] } | null>(null);
     const riderWrapperRef = useRef<HTMLDivElement>(null);
 
     // Close dropdown on outside click
@@ -384,6 +386,33 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, on
         }
     };
 
+    const checkDuplicatesAndProcess = useCallback((files: File[]) => {
+        const duplicates = files
+            .filter(f => existingFileNames.includes(f.name))
+            .map(f => f.name);
+
+        if (duplicates.length > 0) {
+            setDuplicateConfirm({ files, duplicates });
+        } else {
+            if (files.length === 1) {
+                processFile(files[0]);
+            } else {
+                processBatch(files);
+            }
+        }
+    }, [existingFileNames]);
+
+    const handleDuplicateConfirm = () => {
+        if (!duplicateConfirm) return;
+        const { files } = duplicateConfirm;
+        setDuplicateConfirm(null);
+        if (files.length === 1) {
+            processFile(files[0]);
+        } else {
+            processBatch(files);
+        }
+    };
+
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         setIsDragging(false);
@@ -394,12 +423,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, on
 
         if (supportedFiles.length === 0) {
             setError(t.upload.pleaseUploadCsv);
-        } else if (supportedFiles.length === 1) {
-            processFile(supportedFiles[0]);
         } else {
-            processBatch(supportedFiles);
+            checkDuplicatesAndProcess(supportedFiles);
         }
-    }, []);
+    }, [checkDuplicatesAndProcess]);
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
         e.preventDefault();
@@ -414,17 +441,55 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, onBatchLoaded, on
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
         if (!files || files.length === 0) return;
-        if (files.length === 1) {
-            processFile(files[0]);
-        } else {
-            const supported = Array.from(files).filter(f =>
-                f.name.endsWith('.csv') || f.type === 'text/csv' || f.name.toLowerCase().endsWith('.xrk')
-            );
-            if (supported.length > 0) processBatch(supported);
-        }
+        const supported = Array.from(files).filter(f =>
+            f.name.endsWith('.csv') || f.type === 'text/csv' || f.name.toLowerCase().endsWith('.xrk')
+        );
+        if (supported.length > 0) checkDuplicatesAndProcess(supported);
     };
 
     // --- RENDER ---
+
+    // 0-a. Duplicate file confirmation dialog
+    if (duplicateConfirm) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] p-4">
+                <div className="w-full max-w-md bg-zinc-900 border border-amber-500/50 rounded-2xl p-8 shadow-2xl">
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="p-3 bg-amber-500/20 rounded-full">
+                            <AlertCircle className="w-8 h-8 text-amber-400" />
+                        </div>
+                        <h2 className="text-xl font-bold text-white">{t.upload.duplicateFileDetected}</h2>
+                    </div>
+
+                    <div className="space-y-2 mb-6">
+                        {duplicateConfirm.duplicates.map(name => (
+                            <div key={name} className="flex items-center gap-2 px-3 py-2 bg-zinc-800 rounded-lg">
+                                <FileText className="w-4 h-4 text-amber-400 shrink-0" />
+                                <span className="text-sm text-zinc-300 truncate">
+                                    {t.upload.duplicateFileMessage.replace('{fileName}', name)}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="flex gap-3">
+                        <button
+                            onClick={() => setDuplicateConfirm(null)}
+                            className="flex-1 px-4 py-2.5 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg transition-colors"
+                        >
+                            {t.upload.duplicateCancel}
+                        </button>
+                        <button
+                            onClick={handleDuplicateConfirm}
+                            className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition-colors font-medium"
+                        >
+                            {t.upload.duplicateContinue}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     // 0. Batch Processing Progress
     if (batchProgress) {

@@ -111,6 +111,10 @@ export const en: Translations = {
         batchComplete: '{success} sessions saved',
         batchFailed: '{count} file(s) failed',
         batchSkipped: '{name}: {error}',
+        duplicateFileDetected: 'Duplicate File Detected',
+        duplicateFileMessage: '"{fileName}" has already been uploaded. Do you still want to add it?',
+        duplicateContinue: 'Add Anyway',
+        duplicateCancel: 'Cancel',
     },
     sessions: {
         title: 'Sessions',

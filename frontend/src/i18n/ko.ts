@@ -111,6 +111,10 @@ export const ko: Translations = {
         batchComplete: '{success}\uac1c \uc138\uc158 \uc800\uc7a5 \uc644\ub8cc',
         batchFailed: '{count}\uac1c \ud30c\uc77c \ucc98\ub9ac \uc2e4\ud328',
         batchSkipped: '{name}: {error}',
+        duplicateFileDetected: '중복 파일 감지',
+        duplicateFileMessage: '"{fileName}" 파일이 이미 업로드되어 있습니다. 그래도 추가하시겠습니까?',
+        duplicateContinue: '추가',
+        duplicateCancel: '취소',
     },
     sessions: {
         title: '\uc138\uc158',

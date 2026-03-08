@@ -174,6 +174,10 @@ function App() {
           onDataLoaded={handleSessionLoaded}
           onBatchLoaded={handleBatchLoaded}
           onCancel={() => setView(sessions.length || savedSessions.length ? 'list' : 'landing')}
+          existingFileNames={[
+            ...sessions.map(s => s.metadata.fileName).filter((n): n is string => !!n),
+            ...savedSessions.map(s => s.metadata.fileName).filter((n): n is string => !!n),
+          ]}
         />
       )}
 
