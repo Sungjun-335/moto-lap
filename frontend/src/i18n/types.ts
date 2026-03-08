@@ -338,6 +338,9 @@ export interface Translations {
         primaryTrack: string;
         primaryTrackPlaceholder: string;
         invalidCredentials: string;
+        termsRequired: string;
+        termsContent: string;
+        agreeTerms: string;
     };
     admin: {
         trackManager: string;

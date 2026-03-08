@@ -337,6 +337,9 @@ export const ko: Translations = {
         primaryTrack: '\uc8fc\uc694 \ud65c\ub3d9 \uacbd\uae30\uc7a5',
         primaryTrackPlaceholder: '\uc608: \uc601\uc554, \ud0dc\ubc31',
         invalidCredentials: '\uc544\uc774\ub514 \ub610\ub294 \ube44\ubc00\ubc88\ud638\uac00 \uc62c\ubc14\ub974\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.',
+        termsRequired: '이용약관에 동의해주세요.',
+        termsContent: 'Motolap 서비스 이용약관\n\n1. 본 서비스는 모터사이클 랩 텔레메트리 분석을 위한 도구입니다.\n2. 업로드된 데이터는 분석 목적으로만 사용됩니다.\n3. 개인정보는 서비스 운영 목적으로만 수집·이용되며, 제3자에게 제공되지 않습니다.\n4. 서비스 이용 중 발생하는 안전사고에 대한 책임은 본인에게 있습니다.\n5. 부적절한 사용이 확인될 경우 서비스 이용이 제한될 수 있습니다.',
+        agreeTerms: '이용약관에 동의합니다',
     },
     admin: {
         trackManager: '트랙 관리',

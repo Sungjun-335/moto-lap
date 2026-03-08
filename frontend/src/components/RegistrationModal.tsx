@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { useTranslation } from '../i18n/context';
-import { Loader2 } from 'lucide-react';
+import { Loader2, LogOut } from 'lucide-react';
 
 const RegistrationModal: React.FC = () => {
-    const { showRegistrationModal, register, dismissRegistrationModal } = useAuth();
+    const { showRegistrationModal, register, logout } = useAuth();
     const { t } = useTranslation();
 
     const [username, setUsername] = useState('');
@@ -16,6 +16,7 @@ const RegistrationModal: React.FC = () => {
     const [bikeName, setBikeName] = useState('');
     const [racingExperience, setRacingExperience] = useState('');
     const [primaryTrack, setPrimaryTrack] = useState('');
+    const [agreeTerms, setAgreeTerms] = useState(false);
 
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
@@ -25,6 +26,9 @@ const RegistrationModal: React.FC = () => {
     const handleSubmit = async () => {
         setError('');
 
+        if (!agreeTerms) {
+            setError(t.auth.termsRequired); return;
+        }
         if (!username.trim() || username.trim().length < 4) {
             setError(t.auth.usernameMinLength); return;
         }
@@ -81,6 +85,22 @@ const RegistrationModal: React.FC = () => {
                 )}
 
                 <div className="space-y-3">
+                    {/* Terms of Service */}
+                    <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-3">
+                        <div className="max-h-28 overflow-auto text-xs text-zinc-400 mb-3 leading-relaxed">
+                            {t.auth.termsContent}
+                        </div>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={agreeTerms}
+                                onChange={e => setAgreeTerms(e.target.checked)}
+                                className="w-4 h-4 rounded border-zinc-600 bg-zinc-700 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
+                            />
+                            <span className="text-sm text-zinc-300">{t.auth.agreeTerms}</span>
+                        </label>
+                    </div>
+
                     {/* Required fields */}
                     <div className="flex flex-col">
                         <label className={labelClass}>{t.auth.username} *</label>
@@ -149,14 +169,15 @@ const RegistrationModal: React.FC = () => {
 
                 <div className="mt-6 flex gap-3">
                     <button
-                        onClick={dismissRegistrationModal}
-                        className="flex-1 rounded-lg border border-zinc-700 px-3 py-2.5 text-sm text-zinc-400 hover:bg-zinc-800 transition"
+                        onClick={logout}
+                        className="flex items-center justify-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-2.5 text-sm text-zinc-400 hover:bg-zinc-800 transition"
                     >
-                        {t.auth.registerLater}
+                        <LogOut size={14} />
+                        {t.auth.signOut}
                     </button>
                     <button
                         onClick={handleSubmit}
-                        disabled={saving}
+                        disabled={saving || !agreeTerms}
                         className="flex-1 rounded-lg bg-blue-600 px-3 py-2.5 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-50 transition flex items-center justify-center gap-2"
                     >
                         {saving && <Loader2 size={14} className="animate-spin" />}

@@ -337,6 +337,9 @@ export const en: Translations = {
         primaryTrack: 'Primary Track',
         primaryTrackPlaceholder: 'e.g. Yeongam, Taebaek',
         invalidCredentials: 'Invalid username or password.',
+        termsRequired: 'Please agree to the terms of service.',
+        termsContent: 'Motolap Terms of Service\n\n1. This service provides motorcycle lap telemetry analysis tools.\n2. Uploaded data is used solely for analysis purposes.\n3. Personal information is collected and used only for service operation and is not shared with third parties.\n4. Users are responsible for their own safety during riding activities.\n5. Inappropriate use may result in service restrictions.',
+        agreeTerms: 'I agree to the Terms of Service',
     },
     admin: {
         trackManager: 'Track Manager',
