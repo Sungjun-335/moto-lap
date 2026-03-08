@@ -260,13 +260,21 @@ async def _call_lambda(csv_bytes: bytes, env: Any) -> Dict[str, Any]:
 
 # ─── Auth Helpers ───
 
+def _safe_reg_complete(row) -> bool:
+    """Safely get registration_complete from a DB row (column may not exist yet)."""
+    try:
+        return bool(row.registration_complete)
+    except Exception:
+        return False
+
+
 async def _upsert_user(env, provider: str, provider_id: str, email: str, name: str, picture: str) -> tuple:
     """Upsert user by provider with email-based account merging. Returns (user_id, is_new, registration_complete)."""
     id_col = f"{provider}_id"
 
     # 1. Check by provider ID first
     existing = await env.DB.prepare(
-        f"SELECT id, nickname, registration_complete FROM Users WHERE {id_col} = ?"
+        f"SELECT id, nickname FROM Users WHERE {id_col} = ?"
     ).bind(provider_id).first()
 
     if existing:
@@ -274,12 +282,12 @@ async def _upsert_user(env, provider: str, provider_id: str, email: str, name: s
         await env.DB.prepare(
             "UPDATE Users SET email = ?, name = ?, picture_url = ? WHERE id = ?"
         ).bind(email, name, picture, user_id).run()
-        return (user_id, False, bool(existing.registration_complete))
+        return (user_id, False, _safe_reg_complete(existing))
 
     # 2. Check by email for account merging (different provider, same person)
     if email:
         email_match = await env.DB.prepare(
-            "SELECT id, nickname, registration_complete FROM Users WHERE email = ?"
+            "SELECT id, nickname FROM Users WHERE email = ?"
         ).bind(email).first()
 
         if email_match:
@@ -287,7 +295,7 @@ async def _upsert_user(env, provider: str, provider_id: str, email: str, name: s
             await env.DB.prepare(
                 f"UPDATE Users SET {id_col} = ?, name = ?, picture_url = ? WHERE id = ?"
             ).bind(provider_id, name, picture, user_id).run()
-            return (user_id, False, bool(email_match.registration_complete))
+            return (user_id, False, _safe_reg_complete(email_match))
 
     # 3. New user
     google_id_value = provider_id if provider == "google" else f"{provider}:{provider_id}"
@@ -607,10 +615,10 @@ async def _handle_auth_me(request, env, headers):
     # Fetch profile from DB
     user_id = int(user["sub"])
     row = await env.DB.prepare(
-        "SELECT nickname, registration_complete FROM Users WHERE id = ?"
+        "SELECT nickname FROM Users WHERE id = ?"
     ).bind(user_id).first()
     nickname = row.nickname if row and row.nickname else None
-    reg_complete = bool(row.registration_complete) if row else False
+    reg_complete = _safe_reg_complete(row) if row else False
 
     return Response.new(json.dumps({
         "id": user.get("sub"),
@@ -1058,7 +1066,12 @@ async def on_fetch(request, env):
             return Response.new(json.dumps({"error": "Authentication failed"}), headers=headers, status=500)
 
     if request.method == "GET" and "/api/auth/me" in url:
-        return await _handle_auth_me(request, env, headers)
+        try:
+            return await _handle_auth_me(request, env, headers)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            return Response.new(json.dumps({"error": "Auth check failed"}), headers=headers, status=500)
 
     if request.method == "PUT" and "/api/auth/nickname" in url:
         try:
