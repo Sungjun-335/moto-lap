@@ -662,11 +662,11 @@ async def _handle_set_nickname(request, env, headers):
 
 
 def _hash_password(password: str, salt: str = None) -> str:
-    """Hash password with PBKDF2-SHA256. Returns salt:hash."""
+    """Hash password with PBKDF2-SHA256. Returns salt:hash (hex-encoded)."""
     if salt is None:
-        salt = base64.b64encode(hashlib.sha256(str(time.time()).encode()).digest()[:16]).decode("ascii")
-    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000)
-    return f"{salt}:{base64.b64encode(dk).decode('ascii')}"
+        salt = hashlib.sha256(str(time.time()).encode()).hexdigest()[:32]
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("ascii"), 100000)
+    return f"{salt}:{dk.hex()}"
 
 
 def _verify_password(password: str, stored_hash: str) -> bool:
